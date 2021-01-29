@@ -8,6 +8,10 @@ Some screen shots
  - Docs/screen_kbd.PNG - Screen keyboard view
  - Docs/keyboard_draw_help.txt - simple "help" instructions - sent to stdout when "h" is pressed
  
+ Requirements:
+  - Basic Python 3
+  - tkinter (included with most Python distributions)
+  - Pillow (friendly PIL fork) - installed via pip install Pillow - still uses PIL names
 
 The required files are:
   - src/keyboard_draw.py - main program
