@@ -1,0 +1,55 @@
+Keyboard_draw.py - help listing
+
+    h - print this help message
+    color keys:
+        r : red, o-range, y-yellow, g-green, b-blue,
+        i : indigo, v-violet
+        w : changing colors
+        - : make lines invisible(white)
+        + : make lines visible(previous color)
+        = : Set line color from color chooser
+            Colors can be changed via arrow keys
+            Press <space> to select color, <ENTER> to
+            choose the color The Mouse can also be used.
+    side size keys:
+        : or ; : Interactively Set line length and width in pixels
+            from script (:width[:length])
+                         e.g. :100:5 for len 100 width 5 
+        q : increase marker size (10%)
+        a : decrease-marker size (undo a previous 10% increase)
+        t : increase current line thickness by two
+        x : decrease current line thickness by two
+    move keys:
+        m : move to location script: moveto[:][x][:y]
+            Move to x,y location (-512..512)
+                default: no movement in direction if direction is empty
+                    example: moveto::500 just moves to y=500, x unchanged
+            m, moveto alone prompts user for values
+                    
+        arrows : in direction of arrow(Up,Down,Right,Left)
+        Digits : 1-9 for directions of keypad
+                7 8 9
+                4   6
+                1 2 3  for example 9-diagonal up to right
+            5 : rotate 45 deg to left, then draw line
+            0 : rotate 45 deg to right, then draw line 
+            space : rotate 180 deg (reverse direction)
+        u : "undo" - take back last graphic action
+                    Note: Most drawing actions use
+                          several graphics actions
+        c : move to center
+        s : "shape" - set shape to next
+        d : "determine" choose shape - via dialog
+        f : "fan" - set shape to rotate as we move
+        z : clear screen of drawing, reset to original values
+        
+    Image Keys
+        w : set colors to change each move
+        s : Set shapes to change each move
+        d : Change to a particular shape
+        j : Select an animal picture for each move
+        k : Change animal picture each press
+        
+    Special keys /commands
+        ., check - used for debugging
+        
