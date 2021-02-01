@@ -14,7 +14,8 @@ from select_trace import SlTrace
 from select_list import SelectList
 from screen_kbd import ScreenKbd
 from image_hash import ImageHash
-from Lib.pickle import NONE, TRUE
+from data_files import DataFiles
+from Lib.pickle import NONE
 
 undomax = 2000      # Maximum turtle undo count
 
@@ -22,11 +23,21 @@ undomax = 2000      # Maximum turtle undo count
     for undo / rotate operations
 """
 class MoveInfo:
-    def __init__(self, drawer, marker=None, shape=None, image_info=None,
+    MT_GENERAL = "mt_general"
+    MT_MARKER = "mt_marker"
+    MT_POSITION = "mt_position"
+    
+    def __init__(self, drawer, move_type=None, marker=None,
+                 shape=None, image_info=None,
                  scale=None, line_width=None):
         """  Marker/Shape info for undo / rotate operations
+        :move_type: General move type
+                MT_MARKER - new marker
+                MT_POSITION - position move
+                MT_GENERAL - general move (unknown)
+                default: MT_GENERAL 
         :marker: marker type
-                default: drawer..marker_current
+                default: drawer.marker_current
         :shape: shape type
                 default: drawer.shape_current
         :image_info: image information (key, image)
@@ -37,6 +48,9 @@ class MoveInfo:
                 default: drawer.side
         """
         self.drawer = drawer
+        if move_type is None:
+            move_type = MoveInfo.MT_GENERAL
+        self.move_type = move_type
         if marker is None:
             marker = drawer.marker_current
         self.marker = marker
@@ -78,6 +92,10 @@ class KeyboardDraw:
                                width=1500, height=1000)
             canvas.pack()
         self.tu_canvas = canvas
+        self.canvas_width = canvas.winfo_width()
+        self.canvas_width = 1500    # Fudge
+        self.canvas_height = canvas.winfo_height()
+        self.canvas_height = 1000   # Fudge
         self.tu_canvas.bind ("<ButtonPress>", self.mouse_down)
         self.tu_screen = turtle.TurtleScreen(self.tu_canvas)
         self.tu = turtle.RawTurtle(self.tu_canvas)
@@ -91,35 +109,50 @@ class KeyboardDraw:
         ###self.turtle_cv = self.tu.getcanvas()
         ###SlTrace.lg(f"turtle: width:{self.turtle_cv.canvwidth} height:{self.turtle_cv.canvheight}")
         self.set_key_mapping()
-        x_start = -500
-        y_start = 350
+        x_start = int(-self.canvas_width/2 + side)
+        y_start = int(self.canvas_height/2 - side)
         side = self.side
         width = self.current_width
         if hello_drawing_str is None:
-            x_start -= 2*side  # Fudge because of  unexpcted size
             hello_drawing_str = f"""
             # Beginning screen pattern
+            # Add in Family
             minus
-            line({side},{width})        # Set side, width
             moveto({x_start},{y_start})
-            shape(line)
             plus
-            image();q
-            image()
-            image();q
-            image()
-            image();q
-            image()
-            image();q
-            image()
-            image();a
-            image()
+            image_file(family,alex);q
+            image_file(family,decklan);q
+            image_file(family,avery);q
+            image_file(family,charlie);q
+            image_file(family,willow);q
+            image_file(family,grammy);q
+            image_file(family,grampy);q
+            image_file(other_stuff,batman);q
             minus
-            line({side},{width})        # Set side: 100; width: 20
-            shape(line)
-            # HI in middle of screen
-            moveto({x_start+200},{y_start-150})
             
+            # Add in animals
+            k
+            plus
+            k;Right;a;a
+            k;Right;a:a
+            k;Right;a;a
+            k;Right;a;a
+            k;Right;a;a
+            
+            # A bit of other stuff
+            minus;moveto({x_start+side},{y_start-2*side});plus
+            image_file(princesses,princess);q
+            minus; moveto({x_start+2*side},{y_start-3*side});plus
+            image_file(other_stuff,batman);q 
+            minus; moveto({x_start+3*side},{y_start-4*side});plus
+            image_file(other_stuff,baseball);q 
+            
+            minus
+            # HI in middle of screen
+            line({side},{width*4})        # Set side: 100; width: 20
+            shape(line)
+            moveto({int(-2.5*side)},{2*side})
+            marker(line)
             shape(line)
             plus
             w
@@ -128,8 +161,9 @@ class KeyboardDraw:
             Down;Down
             
             # Line under
-            minus;Right;Right;Right;Down;Down
+            minus
             line({side},{4})
+            moveto({int(self.canvas_width/2-side)},{int(-self.canvas_height/2+side)})
             plus
             Left
             t;=#ff0000;shape(rotate)
@@ -139,10 +173,13 @@ class KeyboardDraw:
             t;=#0000ff;shape()
             t;=#f0f0f0;shape()
             t;=#af0f0f;shape(line)
+            t;=#0ff000;shape()
+            t;=#00ff00;shape()
+            t;=#000ff0;shape()
+            t;=#0000ff;shape()
             line({side},{width})        # Set side,width to starting
             w
             check
-            
             """
         self.hello_drawing_str = hello_drawing_str
         
@@ -178,6 +215,7 @@ class KeyboardDraw:
         self.fun_by_name = {
             'color' : self.color_set,
             'image' : self.image_next,
+            'image_file' : self.image_file,
             'line' : self.line_set,
             'marker' : self.set_marker,
             'moveto' : self.moveto_set,
@@ -252,6 +290,9 @@ class KeyboardDraw:
         d : Change to a particular shape
         j : Select an animal picture for each move
         k : Change animal picture each press
+        l : Change family picture each press
+        [ : Change princess picture each press
+        ] : Change other_stuff picture each press
         
     Special keys /commands
         ., check - used for debugging
@@ -272,8 +313,22 @@ class KeyboardDraw:
         :image_dir: image file directory
         """
         if image_dir is None:
-            image_dir="../../resource_lib/images/animals"
-            
+            image_dir="../../resource_lib/images"
+        
+        self.image_group_names = ["animals", "family", "princesses",
+                             "other_stuff"]
+        self.image_group_index = len(self.image_group_names)
+        if self.image_group_index >= len(self.image_group_names):
+            self.image_group_index = 0
+        group_name = self.image_group_names[self.image_group_index]
+        
+        self.ifh = DataFiles(data_dir=image_dir)
+        for name in self.image_group_names:
+            group_dir = os.path.join(image_dir, name)
+            self.ifh.add_group(name, group_dir=group_dir)
+
+        self.set_image_group(group_name=group_name)
+                
         SlTrace.lg("Image Files")
         data_files_dir="../../resource_lib/images/animals"
         image_files_dir = os.path.abspath(data_files_dir)
@@ -419,8 +474,9 @@ class KeyboardDraw:
             width = 200
             height = 400
             SlTrace.lg(f"x0={x0}, y0={y0}, width={width}, height={height}", "select_list")
-
-            app = SelectList(items=self.select_image_files, image_hash=self.select_image_hash,
+            select_image_files = self.get_image_files()
+            select_image_hash = self.get_select_image_hash()
+            app = SelectList(items=select_image_files, image_hash=select_image_hash,
                              default_to_files=True,
                              title="Marker Images",
                              position=(x0, y0),
@@ -438,6 +494,7 @@ class KeyboardDraw:
             self.marker_chosen = selected_field
             SlTrace.lg(f"self.image_chosen={self.image_chosen}")
             self.set_marker(marker="image", changing=False)
+            self.do_marker()
         else:
             self.set_marker(marker=marker, changing=changing)
             
@@ -491,19 +548,20 @@ class KeyboardDraw:
         self.cur_x, self.cur_y = self.tu.position()
         self.start_animation()
         
-    def draw_preaction(self):
+    def draw_preaction(self, move_type=MoveInfo.MT_GENERAL):
         """ Before drawing action
         """
         self.stop_animation()
         self.draw_undo_counts.append(self.tu.undobufferentries())
         self.moves_canvas_tags.append([])   # start move canvas tag list
-        
         self.x_cor = self.tu.xcor()
         self.y_cor = self.tu.ycor()
+        SlTrace.lg(f"draw_preacion: x_cor={self.x_cor} y_cor={self.y_cor}")
         self.set_color()
         self.set_marker()
-        self.move_current = MoveInfo(self)
-
+        self.move_current = MoveInfo(self, move_type=move_type)
+        self.move_stack.append(self.move_current)
+        
     def stop_animation(self):
         """ Stop animation (speed up)
         """
@@ -545,10 +603,12 @@ class KeyboardDraw:
     def do_image(self, image_info=None, move_to_next=True):
         """ Do image marker
         """
+        self.draw_preaction(move_type= MoveInfo.MT_MARKER)
         if self.tu.isdown():
             self.do_image_display(image_info=image_info)
         if move_to_next:
             self.jump_to_next()
+        self.draw_postaction()
     
     def do_image_display(self, image_info=None):
         """ Do image marker display
@@ -556,12 +616,22 @@ class KeyboardDraw:
         self.image_heading_default = 0
         if image_info is None:
             image_key, image = self.get_marker_image()
+        
+        rotation = (self.heading + self.image_heading_default)%360
+        if rotation > 90 and rotation < 270:
+            # for image around a vertical axis use Image.FLIP_LEFT_RIGHT
+            # for horizontal axis use: Image.FLIP_TOP_BOTTOM
+            image = image.transpose(Image.FLIP_TOP_BOTTOM)            
+            SlTrace.lg(f"rotation:{rotation} FLIP_TOP_BOTTOM")
+        elif rotation > 270:
+            #image = image.transpose(Image.FLIP_LEFT_RIGHT)            
+            #image = image.transpose(Image.FLIP_TOP_BOTTOM)            
+            SlTrace.lg(f"rotation:{rotation} FLIP_LEFT_RIGHT")
         self.marker_image_width = self.side*2   # allow rotation
         self.marker_image_width = self.side     # Workaround untill...
         self.marker_image_height = self.marker_image_width
         image = image.resize((int(self.marker_image_width), int(self.marker_image_height)),
                              Image.ANTIALIAS)
-        rotation = self.heading + self.image_heading_default
         image = image.rotate(rotation)
         self.photo_image = ImageTk.PhotoImage(image)
         if image_key not in self.photo_images:
@@ -589,7 +659,39 @@ class KeyboardDraw:
         self.moves_canvas_tags[-1].append(self.marker_image_tag)
 
         self.tu_canvas.update()
+
+    def image_file(self, group, name):
+        """ create marker at curren location, heading
+        from group of name
+        :group: group name (e.g. animals, family)
+        :name: first file in group which contains the name string
+        """
+        if group not in self.image_group_names:
+            SlTrace.report(f"No image file group {group}"
+                           f" groups: {self.image_group_names}")
+            return 
         
+        ifg = self.get_image_file_group(group)
+        image_files = ifg.get_image_files()
+        found = None
+        for im_name in image_files:
+            if im_name.find(name) >= 0:
+                found = im_name
+                break
+        if found is None:
+            SlTrace.report(f"{name} not found in image group {group}")
+            return 
+        
+        self.image_chosen = self.image_file_to_info(found)
+        if self.image_chosen is None:
+            SlTrace.report(f"Sorry, can't load image {found} from group {group}")
+            return
+
+        self.marker_chosen = found
+        SlTrace.lg(f"self.image_chosen={self.image_chosen}")
+        self.set_marker(marker="image", changing=False)
+        self.do_marker()
+            
     def image_next(self, image=None, choose=None):
         """ Go to next image and change per image parameter
             Sets self.image_chosen
@@ -618,7 +720,7 @@ class KeyboardDraw:
             self.set_marker(marker="image")
             self.image_chosen = self.pick_next_image()
             self.image_current = self.image_chosen
-            self.erase_move()
+            self.erase_if_marker()
         elif image == "rotate":
             self.set_marker(marker="image")
             self.image_current = "rotate"
@@ -626,26 +728,20 @@ class KeyboardDraw:
         elif image == "rotateinplace":
             self.set_marker(marker="image")
             self.image_current = "rotate"
-            self.erase_move()
+            self.erase_if_marker()
             self.image_chosen = self.pick_next_image()
         else:
             self.image_chosen = self.pick_next_image()
-        self.draw_preaction()
         self.set_pen_state()
         self.do_image()
         self.set_pen_state()
 
 
     def pick_next_image(self):
-        """ Get next from image list (self.image_files)
+        """ Get next from current image group
         :returns: imageinfo (key, image)
         """
-        self.select_image_files
-        nimage = len(self.select_image_files)
-        self.image_index += 1
-        if self.image_index >= nimage:
-            self.image_index = 0
-        display_file = self.select_image_files[self.image_index]
+        display_file = self.get_image_file()
         return self.image_file_to_info(display_file)
 
     def image_file_to_info(self, display_file):
@@ -681,18 +777,20 @@ class KeyboardDraw:
         """ Do backward operation
         :side: distance
         """
-        self.draw_preaction()
+        self.draw_preaction(move_type=MoveInfo.MT_POSITION)
         self.tu.backward(side)
         self.draw_postaction()
         
     def do_forward(self, side):
-        self.draw_preaction()
+        self.draw_preaction(move_type=MoveInfo.MT_POSITION)
         self.tu.forward(side)
         self.draw_postaction()
         
     def clear_all(self):
         """ Clear screen
         """
+        self.move_stack = []    # Stack moves in draw_preaction()
+
         self.tu.speed("fastest")
         self.stop_animation()       # Record speed
         self.start_animation()      # Restart animation
@@ -730,7 +828,10 @@ class KeyboardDraw:
         self.image_current = "rotate"
         self.marker_image_tags = []
         self.photo_images = {}      # Keeping references
-        
+        """ Reset image group access to first file """
+        for name in self.image_group_names:
+            ifg = self.get_image_file_group(name)
+            ifg.set_file_index(-1)
 
         self.draw_preaction()
         self.tu.clear()
@@ -911,18 +1012,24 @@ class KeyboardDraw:
                 y_new = y_cur
             else:
                 y_new = int(y)
-        self.move_to(x_new, y_new)
+        self.move_to(x_new, y_new, is_move=True)
         self.trace(f"Position x:{x_new} y: {y_new}")
         self.trace(f"End of move_set key")
 
-    def move_to(self, x,  y):
+    def move_to(self, x,  y, is_move=False):
         """ Move to position
         :x: new x position
         :y: new y position
+        :is_move: True - this is a move and undoable
         """
+        if is_move:
+            self.no_move_backup = True
+            self.draw_preaction(move_type=MoveInfo.MT_POSITION)       # Buffer against loosing move
         self.x_cur = x
         self.y_cur = y
         self.tu.setposition(x, y)
+        if is_move:
+            self.draw_postaction()
     
     def line_setting(self):
         self.line_set(choose=True)
@@ -990,7 +1097,7 @@ class KeyboardDraw:
             Circle of current side diameter, in direction of current heading,
             color,...
         """
-        #self.erase_move()
+        #self.erase_if_marker()
         cir_heading = self.heading + 90
         self.tu.setheading(cir_heading)
         self.tu.circle(-self.side/2)
@@ -1008,7 +1115,7 @@ class KeyboardDraw:
             image's right side in direction of current heading,
             color,...
         """
-        #self.erase_move()
+        #self.erase_if_marker()
         #self.tu.begin_fill()
         self.jump_to(heading=self.heading, distance=self.side/2)
         self.jump_to_next()
@@ -1024,7 +1131,7 @@ class KeyboardDraw:
             square in direction of current heading,
             color,...
         """
-        #self.erase_move()
+        #self.erase_if_marker()
         #self.tu.begin_fill()
         self.jump_to(heading=self.heading-90, distance=self.side/2)
         self.tu.forward(self.side)
@@ -1044,7 +1151,7 @@ class KeyboardDraw:
             line, in direction of current heading,
             color,...
         """
-        #self.erase_move()
+        #self.erase_if_marker()
         
         SlTrace.lg(f"shape_line from: x_cor,y_cor:{self.tu.xcor():.0f}, {self.tu.ycor():.0f}")
         self.tu.setheading(self.heading)
@@ -1064,7 +1171,7 @@ class KeyboardDraw:
             Triangle in direction of current heading,
             color,...
         """
-        #self.erase_move()
+        #self.erase_if_marker()
         our_heading = self.heading+90
         self.jump_to(heading=our_heading,
                       distance=self.side/2)
@@ -1099,6 +1206,35 @@ class KeyboardDraw:
         """
         self.shape_next(shape=shape, choose=choose)
 
+    """ Select special marker images
+    """
+    
+    def marker_animals(self):
+        """ Setup to rotate through animal images
+        """
+        self.set_image_group("animals")
+        self.image_next('rotateinplace')
+    
+    def marker_family(self):
+        """ Setup to rotate through animal images
+        """
+        self.set_image_group("family")
+        self.image_next('rotateinplace')
+    
+    def marker_princesses(self):
+        """ Setup to rotate through princesses images
+        """
+        self.set_image_group("princesses")
+        self.image_next('rotateinplace')
+    
+    def marker_other_stuff(self):
+        """ Setup to rotate through other images
+        """
+        self.set_image_group("other_stuff")
+        self.image_next('rotateinplace')
+        
+        
+        
     def marker_next(self):
         """ Go to next marker if that is changing,
             else to the next shape if that is changing
@@ -1146,7 +1282,7 @@ class KeyboardDraw:
             self.set_marker(marker="shape")
             display_shape = self.pick_next_shape()
             self.shape_current = display_shape
-            self.erase_move()
+            self.erase_if_marker()
         elif shape == "rotate":
             self.set_marker(marker="shape")
             self.shape_current = "rotate"
@@ -1154,12 +1290,12 @@ class KeyboardDraw:
         elif shape == "rotateinplace":
             self.set_marker(marker="shape")
             self.shape_current = "rotate"
-            self.erase_move()
+            self.erase_if_marker()
             display_shape = self.pick_next_shape()
         else:
             display_shape = self.shape_current
         shape_fun = self.shapes[display_shape]
-        self.draw_preaction()
+        self.draw_preaction(move_type=MoveInfo.MT_MARKER)
         self.set_pen_state()
         shape_fun()
         self.set_pen_state()
@@ -1223,9 +1359,26 @@ class KeyboardDraw:
         """ Erase last move
             Currently just a simple turtle undo but soon to be more robust 
         """
-        self.trace("erase_side")
+        self.trace("erase_move")
         self.draw_undo()
+
+    def erase_if_marker(self):
+        """ Remove last move if it is a marker
+        This allows modify-in-place
+        """
+        move = self.get_move()
+        if move and move.move_type == MoveInfo.MT_MARKER:
+            self.erase_move()
+
+    def get_move(self):
+        """ Get most recent move (MoveInfo)
+        :returns: move, None if none
+        """
+        if len(self.move_stack) > 0:
+            return self.move_stack[-1]
         
+        return None 
+    
     def erase_side(self):
         """ Erase side, for possible overwriting
         width, length, and heading remain unchanged
@@ -1240,7 +1393,7 @@ class KeyboardDraw:
         :direct: direction Up, Left, Right, Down
         """
         self.trace(f"move: '{direct}'")
-        self.draw_preaction()
+        self.draw_preaction(move_type=MoveInfo.MT_POSITION)
         if direct == 'Up':
             self.heading = 90
         elif direct == 'Left':
@@ -1287,7 +1440,7 @@ class KeyboardDraw:
         self.tu.setheading(self.heading)
         ###self.do_forward(self.side)
         self.marker_next()
-        self.draw_postaction()
+        ###self.draw_postaction()
         
     def move_up(self):
         self.move('Up')
@@ -1368,14 +1521,14 @@ class KeyboardDraw:
     def line_narrow(self):
         if self.current_width > 2:
             if not self.new_pendown:
-                self.erase_move()      # Erase current leg
+                self.erase_if_marker()      # Erase current leg
             self.current_width -= 2
             self.tu.width(self.current_width)
             self.shape_next()
 
     def line_widen(self):
         if not self.new_pendown:
-            self.erase_move()      # Erase current leg
+            self.erase_if_marker()      # Erase current leg
         self.current_width += 2
         self.tu.width(self.current_width)
         self.shape_next()
@@ -1384,17 +1537,17 @@ class KeyboardDraw:
         move = self.move_current
         if move.marker == "line":
             if not self.new_pendown:
-                self.erase_move()      # Erase current leg
+                self.erase_if_marker()      # Erase current leg
             self.side *= 1.1
             self.shape_next()
         elif move.marker == "shape":
             if not self.new_pendown:
-                self.erase_move()      # Erase current leg
+                self.erase_if_marker()      # Erase current leg
             self.side *= 1.1
             self.shape_next()
         elif move.marker == "image":
             if not self.new_pendown:
-                self.erase_move()      # Erase current leg
+                self.erase_if_marker()      # Erase current leg
             self.side *= 1.1
             self.image_next('same')
         
@@ -1404,20 +1557,70 @@ class KeyboardDraw:
         move = self.move_current
         if move.marker == "line":
             if not self.new_pendown:
-                self.erase_move()      # Erase current leg
+                self.erase_if_marker()      # Erase current leg
             self.side /= 1.1
             self.shape_next()
         elif move.marker == "shape":
             if not self.new_pendown:
-                self.erase_move()      # Erase current leg
+                self.erase_if_marker()      # Erase current leg
             self.side /= 1.1
             self.shape_next()
         elif move.marker == "image":
             if not self.new_pendown:
-                self.erase_move()      # Erase current leg
+                self.erase_if_marker()      # Erase current leg
             self.side /= 1.1
             self.image_next('same')
-                
+     
+    def get_image_files(self):
+        """ get current image group's files
+        """
+        ifg = self.get_image_file_group()
+        return ifg.image_files
+     
+    def get_image_file(self, next=True):
+        """ get current image group's file
+        :next: if true get next
+        """
+        ifg = self.get_image_file_group()
+        if next:
+            inc = 1
+        else:
+            inc = 0
+        im_file = ifg.get_file(inc=inc)
+        SlTrace.lg(f"get_image_file: {im_file}")
+        return im_file
+
+    def get_image_hash(self):
+        """ get current image group's files
+        """
+        ifg = self.get_image_file_group()
+        return ifg.image_hash
+
+    def get_select_image_hash(self):
+        """ get current image group's SelectList hash
+        Note that these may be images whose sizes are
+        for the SelectList and not for marker images
+        """
+        ifg = self.get_image_file_group()
+        return ifg.select_image_hash
+
+
+    def get_image_file_group(self, name=None):
+        """ Get current marker image file group (DataFileGroup)
+        :name: group name
+                default: return current self.image_group
+        """
+        if name is None:
+            ifg = self.image_group
+        else:
+            ifg = self.ifh.get_group(name)
+        return ifg
+
+    def set_image_group(self, group_name):
+        """ Set current image group name and access
+        """
+        self.image_group = self.ifh.get_group(group_name)
+                  
     def make_side(self, sz):
         """ Make side (move) dimension
         :sz: new side size
@@ -1448,7 +1651,7 @@ class KeyboardDraw:
         if angle is None:
             angle = 45
             
-        self.erase_move()
+        SlTrace.report(f"rotate_marker not ready yet")
         
     def move_shift(self):
         pass
@@ -1501,7 +1704,8 @@ class KeyboardDraw:
             if fun_name in self.fun_by_name:
                 fun_fun = self.fun_by_name[fun_name]
             else:
-                print(f"We don't recognize function {fun_name} in {key}")
+                msg = f"We don't recognize function {fun_name} in {key}"
+                SlTrace.report(msg)
                 return 
             
             fun_args = re.split(r'\s*,\s*', args_str)
@@ -1607,7 +1811,8 @@ class KeyboardDraw:
         self.track_key(self.help, 'h')        
         self.track_key(self.col_i, 'i')
         self.track_key((lambda : self.marker_set(choose=True)), 'j')
-        self.track_key((lambda : self.image_next('rotateinplace')), 'k')
+        self.track_key((lambda : self.marker_animals()), 'k')
+        self.track_key(self.marker_family, 'l')
         self.track_key(self.moveto_setting, 'm')
         self.track_key(self.col_o, 'o')
         self.track_key(self.marker_enlarge, 'q')
@@ -1626,6 +1831,8 @@ class KeyboardDraw:
         self.track_key(self.move_down, 'Down')
         self.track_key(self.move_minus, 'minus')
         self.track_key(self.move_plus, 'plus')
+        self.track_key(self.marker_princesses, '[')
+        self.track_key(self.marker_other_stuff, ']')
         self.track_key(self.col_equals, '=')
         self.track_key(self.line_setting, ':')
         self.track_key(self.line_setting, ';')    # lower case :
@@ -1665,7 +1872,13 @@ class KeyboardDraw:
             canvas_tags = self.moves_canvas_tags.pop()
             for canvas_tag in canvas_tags:
                 self.tu_canvas.delete(canvas_tag)
-                
+
+        """ Undo move
+            Might consider combining with canvas undo
+        """
+        if len(self.move_stack) > 0:
+            self.move_stack.pop()
+            
     def mouse_down (self, event):
         x_coord = event.x
         y_coord = event.y
@@ -1694,6 +1907,7 @@ if __name__ == "__main__":
     app.resizable(0, 0)     # disable resizeable property
     hello_str = None    # Use built in display
     #hello_str = ""      # Empty display
+    #hello_str = "image_file(family,alex);image_file(family,avery)"
     kb_draw = KeyboardDraw(app, hello_drawing_str=hello_str)
     
     kb_draw.tu_screen.listen()
