@@ -3,19 +3,20 @@
 Drawing on turtle window, using keyboard
 """
 import os
+import sys
 import re
 import math
 import tkinter as tk
 from tkinter import colorchooser
 from PIL import ImageTk, Image
 import turtle
+import argparse
 
 from select_trace import SlTrace
 from select_list import SelectList
 from screen_kbd import ScreenKbd
 from image_hash import ImageHash
 from data_files import DataFiles
-from Lib.pickle import NONE
 
 undomax = 2000      # Maximum turtle undo count
 
@@ -68,6 +69,10 @@ class MoveInfo:
         self.line_width = line_width
             
 class KeyboardDraw:
+
+    IT_FILE = "it_file"     # image from file
+    IT_TEXT = "it_text"     # image generated 
+    
     def __init__(self, master, kbd_master=None, canvas=None,
                  side=100,
                  width=20,
@@ -113,7 +118,7 @@ class KeyboardDraw:
         y_start = int(self.canvas_height/2 - side)
         side = self.side
         width = self.current_width
-        if hello_drawing_str is None:
+        if hello_drawing_str == "BUILTIN":
             hello_drawing_str = f"""
             # Beginning screen pattern
             # Add in Family
@@ -182,7 +187,8 @@ class KeyboardDraw:
             check
             """
         self.hello_drawing_str = hello_drawing_str
-        
+        SlTrace.lg(f"hello_drawing_str evaluated:"
+                   f"\n{hello_drawing_str}")
         self.marker_order = [
             "line",
             "shape",
@@ -313,8 +319,13 @@ class KeyboardDraw:
         :image_dir: image file directory
         """
         if image_dir is None:
-            image_dir="../../resource_lib/images"
+            image_dir="./images"    # Distribution choice
+            SlTrace.lg(f"Trying distibution image dir: {image_dir}")
+            if not os.path.exists(image_dir):
+                image_dir="../../resource_lib/images"
+                SlTrace.lg(f"Using development image dir: {image_dir}")
         
+        self.image_type = KeyboardDraw.IT_FILE
         self.image_group_names = ["animals", "family", "princesses",
                              "other_stuff"]
         self.image_group_index = len(self.image_group_names)
@@ -603,7 +614,7 @@ class KeyboardDraw:
     def do_image(self, image_info=None, move_to_next=True):
         """ Do image marker
         """
-        self.draw_preaction(move_type= MoveInfo.MT_MARKER)
+        self.draw_preaction(move_type=MoveInfo.MT_MARKER)
         if self.tu.isdown():
             self.do_image_display(image_info=image_info)
         if move_to_next:
@@ -790,7 +801,7 @@ class KeyboardDraw:
         """ Clear screen
         """
         self.move_stack = []    # Stack moves in draw_preaction()
-
+        self.set_image_type(KeyboardDraw.IT_FILE)
         self.tu.speed("fastest")
         self.stop_animation()       # Record speed
         self.start_animation()      # Restart animation
@@ -1212,24 +1223,34 @@ class KeyboardDraw:
     def marker_animals(self):
         """ Setup to rotate through animal images
         """
+        self.set_image_type(KeyboardDraw.IT_FILE)
         self.set_image_group("animals")
+        self.image_next('rotateinplace')
+    
+    def marker_text(self):
+        """ Setup to add text character images
+        """
+        self.set_image_type(KeyboardDraw.IT_FILE)
         self.image_next('rotateinplace')
     
     def marker_family(self):
         """ Setup to rotate through animal images
         """
+        self.image_type = KeyboardDraw.IT_FILE
         self.set_image_group("family")
         self.image_next('rotateinplace')
     
     def marker_princesses(self):
         """ Setup to rotate through princesses images
         """
+        self.image_type = KeyboardDraw.IT_FILE
         self.set_image_group("princesses")
         self.image_next('rotateinplace')
     
     def marker_other_stuff(self):
         """ Setup to rotate through other images
         """
+        self.image_type = KeyboardDraw.IT_FILE
         self.set_image_group("other_stuff")
         self.image_next('rotateinplace')
         
@@ -1620,6 +1641,11 @@ class KeyboardDraw:
         """ Set current image group name and access
         """
         self.image_group = self.ifh.get_group(group_name)
+
+    def set_image_type(self, type_name):
+        """ Set current image group name and access
+        """
+        self.image_type = type_name
                   
     def make_side(self, sz):
         """ Make side (move) dimension
@@ -1899,16 +1925,45 @@ class KeyboardDraw:
         y_coor = int(canvas_height/2 - y_cor)        # canvas increases downward
         return (x_coor, y_coor)
 
-
-if __name__ == "__main__":
-    app = tk.Tk()   # initialise the tkinter app
+def main():
+    """ Main Program """
+    data_dir = "../data"
+    trace = ""
+    hello_str = None
+    hello_file = "keyboard_draw_hello.txt"
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--trace', dest='trace', default=trace)
+    parser.add_argument('--data_dir', dest='data_dir', default=data_dir)
+    parser.add_argument('--hello_str', dest='hello_str', default=hello_str)
+    parser.add_argument('--hello_file', dest='hello_file', default=hello_file)
+    
+    args = parser.parse_args()             # or die "Illegal options"
+    SlTrace.lg("args: %s\n" % args)
+    hello_file = args.hello_file
+    hello_str = args.hello_str
+    data_dir = args.data_dir
+    trace = args.trace
+    
+    
+    app = tk.Tk()   # initialize the tkinter app
     app.title("Keyboard Drawing")     # title
     app.config(bg='powder blue')    # background
     app.resizable(0, 0)     # disable resizeable property
-    hello_str = None    # Use built in display
-    #hello_str = ""      # Empty display
-    #hello_str = "image_file(family,alex);image_file(family,avery)"
+    if hello_str is not None:
+        SlTrace.lg("Use internal default built in display")
+    else:
+        try:
+            with open(hello_file, 'r') as fin:
+               hello_str = fin.read()
+        except IOError as e:
+            SlTrace.report(f"Problem with hello_file:{hello_file}"
+                           f"\n in {os.path.abspath(hello_file)}"
+                           f"\n error: {e}")
+            sys.exit() 
     kb_draw = KeyboardDraw(app, hello_drawing_str=hello_str)
     
     kb_draw.tu_screen.listen()
     tk.mainloop()
+
+if __name__ == "__main__":
+    main()
