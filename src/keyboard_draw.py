@@ -14,7 +14,11 @@ import argparse
 
 from select_trace import SlTrace
 from select_list import SelectList
+""" Using ScreenKbd
 from screen_kbd import ScreenKbd
+"""
+from screen_kbd_flex import ScreenKbdFlex
+
 from image_hash import ImageHash
 from data_files import DataFiles
 
@@ -74,6 +78,10 @@ class KeyboardDraw:
     IT_TEXT = "it_text"     # image generated 
     
     def __init__(self, master, kbd_master=None, canvas=None,
+                 draw_x=20, draw_y=20,
+                 draw_width=1500, draw_height=1000,
+                 kbd_win_x=0, kbd_win_y=0,
+                 kbd_win_width=350, kbd_win_height=200,
                  side=100,
                  width=20,
                  hello_drawing_str=None,
@@ -83,6 +91,12 @@ class KeyboardDraw:
         :kbd_master: screen keyboard master, if present
                     must be grid managed
                     default: create Toplevel
+        :draw_width: drawing window width default: 1500 pixels
+        :draw_height: drawing window height default: 1000
+        :kbd_win_x: screen keyboard initial x
+        :kbd_win_y: screen keyboard initial y
+        :kbd_win_width: screen keyboard width
+        :kbd_win_height: screen keyboard height
         :canvas: base canvas
                 default: create 500x500
         :side: starting line side length
@@ -94,13 +108,15 @@ class KeyboardDraw:
         """
         if canvas is None:
             canvas = tk.Canvas(master=master,
-                               width=1500, height=1000)
+                               width=draw_width, height=draw_height)
             canvas.pack()
+        self.draw_width = draw_width
+        self.draw_height = draw_height
         self.tu_canvas = canvas
-        self.canvas_width = canvas.winfo_width()
-        self.canvas_width = 1500    # Fudge
-        self.canvas_height = canvas.winfo_height()
-        self.canvas_height = 1000   # Fudge
+        self.canvas_width = draw_width    # Fudge
+        self.canvas_height = draw_height   # Fudge
+
+
         self.tu_canvas.bind ("<ButtonPress>", self.mouse_down)
         self.tu_screen = turtle.TurtleScreen(self.tu_canvas)
         self.tu = turtle.RawTurtle(self.tu_canvas)
@@ -240,9 +256,19 @@ class KeyboardDraw:
         if kbd_master is None:
             kbd_master = tk.Toplevel()
         self.kbd_master = kbd_master
+        """ Using ScreenKbd
         self.screen_keyboard = ScreenKbd(kbd_master, on_kbd=self.do_key,
                                           title="Let's Make a Drawing!")
+        """
+        self.screen_keyboard = ScreenKbdFlex(kbd_master, on_kbd=self.do_key,
+                                        win_x=kbd_win_x,
+                                        win_y=kbd_win_y,
+                                        win_width=kbd_win_width,
+                                        win_height=kbd_win_height,
+                                          title="Let's Make a Drawing!")
+        self.screen_keyboard.to_top()   # Just earlier to see problems
         self.do_keys(self.hello_drawing_str)
+        self.screen_keyboard.to_top()
         self.help()
 
     def help(self):
@@ -1948,7 +1974,9 @@ def main():
     app = tk.Tk()   # initialize the tkinter app
     app.title("Keyboard Drawing")     # title
     app.config(bg='powder blue')    # background
+    """ Using ScreenKbd
     app.resizable(0, 0)     # disable resizeable property
+    """
     if hello_str is not None:
         SlTrace.lg("Use internal default built in display")
     else:
@@ -1960,7 +1988,12 @@ def main():
                            f"\n in {os.path.abspath(hello_file)}"
                            f"\n error: {e}")
             sys.exit() 
-    kb_draw = KeyboardDraw(app, hello_drawing_str=hello_str)
+    kb_draw = KeyboardDraw(app, hello_drawing_str=hello_str,
+                 draw_x=100, draw_y=50,
+                 draw_width=1500, draw_height=1000,
+                 kbd_win_x=50, kbd_win_y=25,
+                 kbd_win_width=600, kbd_win_height=300,
+                           )
     
     kb_draw.tu_screen.listen()
     tk.mainloop()
