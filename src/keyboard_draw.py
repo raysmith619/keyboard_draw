@@ -347,6 +347,13 @@ class KeyboardDraw(SelectWindow):
         l : Change family picture each press
         [ : Change princess picture each press
         ] : Change other_stuff picture each press
+
+    Text Keys
+        e : Set to text (letter) entering mode
+            Keys pressed now will create letters on the screen
+            Screen keyboard now shows letters in most key positions
+        END : quit text (letter) mode and go back to shapes/animals...
+            Screen keyboard now changes back to shapes/animals...
         
     Special keys /commands
         ., check - used for debugging
@@ -858,6 +865,7 @@ class KeyboardDraw(SelectWindow):
         self.stop_animation()       # Record speed
         self.start_animation()      # Restart animation
         self.nk = 0
+
         self.new_pendown = True      # Set to indicate pen just down
         self.is_pendown_orig = True
         self.is_pendown = self.is_pendown_orig       # Drawing pen state
@@ -902,6 +910,8 @@ class KeyboardDraw(SelectWindow):
         self.tu.clear()
         self.tu.penup()
         self.tu.home()
+        self.x_cor = self.tu.xcor()
+        self.y_cor = self.tu.ycor()
         self.do_pendown()
         self.draw_postaction()
         
@@ -1043,14 +1053,14 @@ class KeyboardDraw(SelectWindow):
             int or str -> converted to int
         :choose: prompt user for location default: don't ask
         """
-        x_cur = self.tu.xcor()
-        y_cur = self.tu.ycor()
+        x_cor = self.tu.xcor()
+        y_cor = self.tu.ycor()
         if choose:
             while True:
                 try:
-                    inp = self.tu.textinput("X",f"Enter x position[{x_cur:.0f}]")
+                    inp = self.tu.textinput("X",f"Enter x position[{x_cor:.0f}]")
                     if inp is None or inp == "":                    
-                        inp = str(int(x_cur))
+                        inp = str(int(x_cor))
                     x_new = int(inp)
                     break
                 except:
@@ -1058,9 +1068,9 @@ class KeyboardDraw(SelectWindow):
                 
             while True:
                 try:
-                    inp = self.tu.textinput("Y", f"Enter y position[{y_cur:.0f}]")
+                    inp = self.tu.textinput("Y", f"Enter y position[{y_cor:.0f}]")
                     if inp is None or inp == "":                    
-                         inp = str(int(y_cur))
+                         inp = str(int(y_cor))
                     y_new = int(inp)
     
                     break
@@ -1070,11 +1080,11 @@ class KeyboardDraw(SelectWindow):
             self.tu.listen()        # textinput does its own keybd capture
         else:
             if x is None or (type(x) == str and x == ""):
-                x_new = x_cur
+                x_new = x_cor
             else:
                 x_new = int(x)
             if y is None or (type(y) == str and y == ""):
-                y_new = y_cur
+                y_new = y_cor
             else:
                 y_new = int(y)
         self.move_to(x_new, y_new, is_move=True)
@@ -1090,8 +1100,8 @@ class KeyboardDraw(SelectWindow):
         if is_move:
             self.no_move_backup = True
             self.draw_preaction(move_type=MoveInfo.MT_POSITION)       # Buffer against loosing move
-        self.x_cur = x
-        self.y_cur = y
+        self.x_cor = x
+        self.y_cor = y
         self.tu.setposition(x, y)
         if is_move:
             self.draw_postaction()
@@ -1156,6 +1166,31 @@ class KeyboardDraw(SelectWindow):
         new_y = self.y_cor + y_chg
         self.move_to(new_x, new_y) 
         self.set_pen_state()
+                
+    def jump_to_next_line(self):
+        """ Move to beginning of next line, invisibly
+        """
+        
+        if self.tu.isdown():
+            self.tu.penup()
+        self.tu.setheading(self.heading)
+        down_heading = self.heading - 90    # Down to next line
+        theta = math.radians(down_heading)
+        x_chg = self.side*math.cos(theta)
+        y_chg = self.side*math.sin(theta)
+        new_x = self.text_line_begin_x + x_chg
+        new_y = self.text_line_begin_y + y_chg
+        self.move_to(new_x, new_y)      # Beginning of next line 
+        self.set_new_line()
+        self.set_pen_state()
+
+    def set_new_line(self):
+        """ Set current location as beginning of line
+        to be used by jump_to_next_line
+        """
+        self.text_line_begin_x = self.x_cor
+        self.text_line_begin_y = self.y_cor
+        
         
     def shape_circle(self):
         """ Display circle
@@ -1342,6 +1377,7 @@ class KeyboardDraw(SelectWindow):
         """ Set letter "shape"
         """
         self.marker_before_letter = self.marker_current
+        self.set_new_line()
         if self.marker_before_letter != "letter":
             self.jump_to(distance=self.side/2)
         self.set_marker("letter")
@@ -1411,29 +1447,36 @@ class KeyboardDraw(SelectWindow):
             self.on_text_end()
             return
         
+        if key == "ENTER":
+            self.jump_to_next_line()
+            return
+        
         if key == "BKSP":
             self.draw_undo()
             return
         
         if key == "Left" or key == "Right" or key == "Up" or key == "Down":
             self.move(key, just_move=True)
-            return True
+            self.set_new_line()     # Set as beginning of line
+            return
         
         if key == "space".lower():
             key = " "
         
         text_size = int(self.side)
-        font_size = 110
+        x0 = 0
+        y0 = 0
+        font_size = 80
         text_font = ImageFont.truetype("arial.ttf", size=font_size)
         #text_font = ImageFont.truetype("courbd.ttf", size=text_size)
         #text_font = ImageFont.truetype("tahoma.ttf", size=text_size)
         text_color = self.next_color()
         text_bg = "#ffffff"    
 
-        xy = (0,0)
+        xy = (x0,y0)
         image = Image.new("RGB", (text_size, text_size), (255,255,255))
         draw = ImageDraw.Draw(image)      # Setup ImageDraw access
-        draw.text(xy, key, anchor=tk.N, font=text_font, fill=text_color,
+        draw.text(xy, key, anchor="mt", font=text_font, fill=text_color,
                   bg=text_bg)
         ii = (None, image)
         self.do_image(image_info=ii)
@@ -1571,44 +1614,41 @@ class KeyboardDraw(SelectWindow):
         """
         self.trace("erase_side")
         self.tu.undo()
-
-    def is_text_input(self, input_char):
-        """ Handle text input chars/keys
-        :input_char: input char
-        
-        """
-        if self.marker_current != "letter":
-            return False 
-        
-        if input_char == "space".lower():
-            input_char = " "
-        elif input_char == "Left" or input_char == "Right" or input_char == "Up" or input_char == "Down":
-            return True        # Do standard movement
-        elif input_char == "BKSP":
-            self.draw_undo()
-            return True 
-        
-        self.text_enter_key(input_char)
-        return True 
     
     def move(self, direct, just_move=False):
         """ move a general direction
         using current shape
         Adjusted to text input (self.marker_current)
         :direct: direction Up, Left, Right, Down
-        :juat_move: True - just move (no shape)
+        :just_move: True - just move (no shape)
                     default: False
         """
         self.trace(f"move: '{direct}'")
         self.draw_preaction(move_type=MoveInfo.MT_POSITION)
         if direct == 'Up':
             self.heading = 90
+            self.jump_to_next()
+            self.set_new_line()
+            return
+        
         elif direct == 'Left':
             self.heading = 180
+            self.jump_to_next()
+            self.set_new_line()
+            return
+        
         elif direct == 'Right':
             self.heading = 0
+            self.jump_to_next()
+            self.set_new_line()
+            return
+        
         elif direct == 'Down':
             self.heading = 270
+            self.jump_to_next()
+            self.set_new_line()
+            return
+        
         elif direct in "12346789": # Digit moves
             dig2head = {'6':0, '9':45, '8':90,
                         '7':135, '4':180, '1':225,
@@ -1653,9 +1693,6 @@ class KeyboardDraw(SelectWindow):
         ###self.draw_postaction()
         
     def move_up(self):
-        if self.marker_current  == 'letter':
-            pass        # Done elsewhere
-        else:
             self.move('Up')
         
     def move_left(self):
@@ -1924,12 +1961,13 @@ class KeyboardDraw(SelectWindow):
         :key: key (descriptive string) pressed
                 or special "key" e.g. =<color spec>
         """
+        SlTrace.lg(f"do_key({key})")
         if key == 'check':
             self.print_key(key)
             self.check(key)
             return
         
-        if self.marker_current == "letter":
+        if self.marker_current == "letter":            
             self.text_enter_key(key=key)
             return
         
@@ -1977,7 +2015,7 @@ class KeyboardDraw(SelectWindow):
     
     def do_keys(self, keystr):
         """ Do action based on keystr
-            comas or newline used as separators
+            semicolon or newline used as separators
             Empty areas between separators are ignored
             lines starting with # are printed but removed
             text starting with "\s+.*" are removed
@@ -2035,8 +2073,14 @@ class KeyboardDraw(SelectWindow):
         if keysym == 'End':
             key = "END"
             self.text_enter_key(key)
+        if keysym == "Return":
+            self.text_enter_key("ENTER")
         elif keysym == 'BackSpace':
             self.draw_undo()
+        elif keysym == 'Shift_L' or keysym == 'Shift_R':
+            pass            # Just adjust physical keyboard
+        elif keysym == 'Caps_Lock':
+            pass            # Just adjust physical keyboard
         elif keysym == 'Up' or keysym == 'Down' or keysym == 'Left' or keysym == 'Right':
             self.move(direct=keysym, just_move=True)
         else:
