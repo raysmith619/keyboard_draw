@@ -9,11 +9,14 @@ import math
 import tkinter as tk
 from tkinter import colorchooser
 from PIL import ImageTk, Image
+from PIL import ImageDraw, ImageFont
 import turtle
 import argparse
 
 from select_trace import SlTrace
 from select_list import SelectList
+from select_window import SelectWindow
+
 """ Using ScreenKbd
 from screen_kbd import ScreenKbd
 """
@@ -72,12 +75,13 @@ class MoveInfo:
             line_width = drawer.current_width
         self.line_width = line_width
             
-class KeyboardDraw:
+class KeyboardDraw(SelectWindow):
 
     IT_FILE = "it_file"     # image from file
     IT_TEXT = "it_text"     # image generated 
     
-    def __init__(self, master, kbd_master=None, canvas=None,
+    def __init__(self, master, title=None,
+                 kbd_master=None, canvas=None,
                  draw_x=20, draw_y=20,
                  draw_width=1500, draw_height=1000,
                  kbd_win_x=0, kbd_win_y=0,
@@ -85,6 +89,7 @@ class KeyboardDraw:
                  side=100,
                  width=20,
                  hello_drawing_str=None,
+                 **kwargs
                  ):
         """ Keyboard Drawing tool
         :master: master
@@ -106,6 +111,12 @@ class KeyboardDraw:
         :hello_drawing_str: Beginning display command string
                 default: HI...
         """
+        control_prefix = "KbdDraw"
+        super().__init__(master,title=title,
+                         control_prefix=control_prefix,
+                         **kwargs)
+
+        
         if canvas is None:
             canvas = tk.Canvas(master=master,
                                width=draw_width, height=draw_height)
@@ -120,6 +131,11 @@ class KeyboardDraw:
         self.tu_canvas.bind ("<ButtonPress>", self.mouse_down)
         self.tu_screen = turtle.TurtleScreen(self.tu_canvas)
         self.tu = turtle.RawTurtle(self.tu_canvas)
+        
+        """ Setup our own, outside turtle, key processing """
+        self.bound_keys = {}     # functions, bound to keys
+        self.master.bind("<KeyPress>", self.on_key_press)
+
         self.tu.setundobuffer(undomax)
         self.draw_undo_counts = [self.tu.undobufferentries()] # undo counts
         self.master = master
@@ -218,9 +234,9 @@ class KeyboardDraw:
             "triangle" : self.shape_triangle,
             }
         self.shape_order = [
-            "circle",
-            "triangle",
             "square",
+            "triangle",
+            "circle",
             ]
         # a rotating color pattern
         self.colors = ["red", "orange", "green",
@@ -246,9 +262,8 @@ class KeyboardDraw:
 
         self.setup_image_access()
         self.moves_canvas_tags = []  # Init for canvas part of draw_undo
-        self.clear_all()
+        self.clear_all()            # Setup initial settings
         
-        self.bound_keys = {}     # functions, bound to keys
         
         
         self.enlarge_fraction = .2   # Enlargement fraction
@@ -270,6 +285,12 @@ class KeyboardDraw:
         self.do_keys(self.hello_drawing_str)
         self.screen_keyboard.to_top()
         self.help()
+    
+    def enable_image_update(self, enable=True):
+        """ Enable/Disable kbd image update
+        :enable: enable update default: True
+        """
+        self.screen_keyboard.enable_image_update(enable)
 
     def help(self):
         print("""
@@ -311,6 +332,7 @@ class KeyboardDraw:
                     Note: Most drawing actions use
                           several graphics actions
         c : move to center
+        e : do letters / text, until DEL key pressed
         s : "shape" - set shape to next
         d : "determine" choose shape - via dialog
         f : "fan" - set shape to rotate as we move
@@ -338,7 +360,7 @@ class KeyboardDraw:
         :tstring: trace string
         """
         if self.do_trace:
-            print(f"\n#{tstring}")
+            SlTrace.lg(f"\n#{tstring}", "tracing")
 
     def setup_image_access(self, image_dir=None):
         """ Setup image access for markers
@@ -481,7 +503,7 @@ class KeyboardDraw:
         SlTrace.lg(f"new_color:{new_color}"
                    f" color_current:{self.color_current}"
                    f" color_index:{self.color_index}"
-                   f" color_changing:{self.color_changing}")
+                   f" color_changing:{self.color_changing}", "color")
         return new_color
                 
     def set_visible_color(self, colr):
@@ -510,7 +532,7 @@ class KeyboardDraw:
             y0 = 400
             width = 200
             height = 400
-            SlTrace.lg(f"x0={x0}, y0={y0}, width={width}, height={height}", "select_list")
+            SlTrace.lg(f"x0={x0}, y0={y0}, width={width}, height={height}", "choose")
             select_image_files = self.get_image_files()
             select_image_hash = self.get_select_image_hash()
             app = SelectList(items=select_image_files, image_hash=select_image_hash,
@@ -519,7 +541,7 @@ class KeyboardDraw:
                              position=(x0, y0),
                              size=(width, height))
             selected_field = app.get_selected(return_text=True)
-            SlTrace.lg(f"image_image: selected_field:{selected_field}")
+            SlTrace.lg(f"image_image: selected_field:{selected_field}", "choose")
             if selected_field is None:
                 return
             
@@ -538,7 +560,7 @@ class KeyboardDraw:
                         
     def set_marker(self, marker=None, changing=None):
         """ set set curent marker
-        marker type , e.g. line, shape, image
+        marker type , e.g. letter, line, shape, image
         is done via do_marker()
         
         :marker: new marker
@@ -593,7 +615,7 @@ class KeyboardDraw:
         self.moves_canvas_tags.append([])   # start move canvas tag list
         self.x_cor = self.tu.xcor()
         self.y_cor = self.tu.ycor()
-        SlTrace.lg(f"draw_preacion: x_cor={self.x_cor} y_cor={self.y_cor}")
+        SlTrace.lg(f"draw_preacion: x_cor={self.x_cor} y_cor={self.y_cor}", "draw_action")
         self.set_color()
         self.set_marker()
         self.move_current = MoveInfo(self, move_type=move_type)
@@ -653,23 +675,26 @@ class KeyboardDraw:
         self.image_heading_default = 0
         if image_info is None:
             image_key, image = self.get_marker_image()
-        
+        else:
+            image_key, image = image_info
         rotation = (self.heading + self.image_heading_default)%360
-        if rotation > 90 and rotation < 270:
-            # for image around a vertical axis use Image.FLIP_LEFT_RIGHT
-            # for horizontal axis use: Image.FLIP_TOP_BOTTOM
-            image = image.transpose(Image.FLIP_TOP_BOTTOM)            
-            SlTrace.lg(f"rotation:{rotation} FLIP_TOP_BOTTOM")
-        elif rotation > 270:
-            #image = image.transpose(Image.FLIP_LEFT_RIGHT)            
-            #image = image.transpose(Image.FLIP_TOP_BOTTOM)            
-            SlTrace.lg(f"rotation:{rotation} FLIP_LEFT_RIGHT")
+        if self.marker_current != "letter":
+            if rotation > 90 and rotation < 270:
+                # for image around a vertical axis use Image.FLIP_LEFT_RIGHT
+                # for horizontal axis use: Image.FLIP_TOP_BOTTOM
+                image = image.transpose(Image.FLIP_TOP_BOTTOM)            
+                SlTrace.lg(f"rotation:{rotation} FLIP_TOP_BOTTOM", "image_display")
+            elif rotation > 270:
+                #image = image.transpose(Image.FLIP_LEFT_RIGHT)            
+                #image = image.transpose(Image.FLIP_TOP_BOTTOM)            
+                SlTrace.lg(f"rotation:{rotation} FLIP_LEFT_RIGHT", "image_display")
         self.marker_image_width = self.side*2   # allow rotation
         self.marker_image_width = self.side     # Workaround untill...
         self.marker_image_height = self.marker_image_width
         image = image.resize((int(self.marker_image_width), int(self.marker_image_height)),
                              Image.ANTIALIAS)
-        image = image.rotate(rotation)
+        if self.marker_current != "letter":
+            image = image.rotate(rotation)
         self.photo_image = ImageTk.PhotoImage(image)
         if image_key not in self.photo_images:
             self.photo_images[image_key] = []
@@ -725,7 +750,7 @@ class KeyboardDraw:
             return
 
         self.marker_chosen = found
-        SlTrace.lg(f"self.image_chosen={self.image_chosen}")
+        SlTrace.lg(f"self.image_chosen={self.image_chosen}", "image_display")
         self.set_marker(marker="image", changing=False)
         self.do_marker()
             
@@ -808,6 +833,7 @@ class KeyboardDraw:
         """ Do pendown and remember
         """
         self.new_pendown = True
+        self.is_pendown = True
         self.tu.pendown()
     
     def do_backward(self, side):
@@ -856,6 +882,8 @@ class KeyboardDraw:
         self.marker_index_orig = 0
         self.marker_index = self.marker_index_orig
         self.marker_current = self.marker_order[self.marker_index]
+        self.marker_before_letter = self.marker_current
+
         """ Undo canvas (e.g. image) actions if any """
         while len(self.moves_canvas_tags) > 0:
             canvas_tags = self.moves_canvas_tags.pop()
@@ -1183,17 +1211,17 @@ class KeyboardDraw:
         self.jump_to_next()
 
     def shape_line(self):
-        SlTrace.lg("shape_line")
+        SlTrace.lg("shape_line", "shape_display")
         """ Display line
             line, in direction of current heading,
             color,...
         """
         #self.erase_if_marker()
         
-        SlTrace.lg(f"shape_line from: x_cor,y_cor:{self.tu.xcor():.0f}, {self.tu.ycor():.0f}")
+        SlTrace.lg(f"shape_line from: x_cor,y_cor:{self.tu.xcor():.0f}, {self.tu.ycor():.0f}", "shape_display")
         self.tu.setheading(self.heading)
         self.tu.forward(self.side)
-        SlTrace.lg(f"shape_line  to: x_cor,y_cor:{self.tu.xcor():.0f}, {self.tu.ycor():.0f}")
+        SlTrace.lg(f"shape_line  to: x_cor,y_cor:{self.tu.xcor():.0f}, {self.tu.ycor():.0f}", "shape_display")
         
                 
     def shape_triangle(self):
@@ -1298,9 +1326,119 @@ class KeyboardDraw:
         elif self.marker_current == "line":
             self.color_set()
             self.do_line()
+        elif self.marker_current == "letter":
+            self.jump_to_next()                    # Move one space
         else:
             SlTrace.lg(f"Unrecognized marker: {self.marker_current} - ignored")
+                        
+    def do_shift(self, shift_on=True):
+        """ Shift letters
+        :shift_on: Put shift on, adjust letters
+                    default: True
+        """
+        self.screen_keyboard.do_shift(shift_on=shift_on)
 
+    def letter_next(self):
+        """ Set letter "shape"
+        """
+        self.marker_before_letter = self.marker_current
+        if self.marker_before_letter != "letter":
+            self.jump_to(distance=self.side/2)
+        self.set_marker("letter")
+        self.do_shift()     # Default to uppercase
+        self.do_pendown()   # Default to visible
+        self.set_images(show=False)
+        exit_infos = self.get_btn_infos(key="END")
+        self.set_btn_image(exit_infos, image="drawing_abc_end.png")
+        self.track_keys_text()
+        self.master.focus()             # So keyboard is active
+        
+    def on_key_press(self, event):
+        """ Process all canvas keying
+        Avoids confusion with turtle onkey and separate binding
+        function is one of single argument keysym
+        :event:
+        """
+        keysym = event.keysym
+        if keysym in self.bound_keys:
+            fun = self.bound_keys[keysym]
+            if fun is not None:
+                fun()
+                
+        
+    
+    def bind_key(self, keyfun, key):
+        """ bind/unbind key to function
+        Binds key to function, if present
+        else unbind key
+        Use self.master.bind('<KeyPress>'...) instead of turtle.onkey
+        :keyfun: "No arg" function bound to key
+        :key: key pressed
+        """
+        #key = key.lower()
+        str_to_key = {"DEL" : chr(127),
+                      "BKSP" : chr(8),
+                    }
+        
+        if keyfun is None:
+            del self.bound_keys[key]        
+        else:
+            self.bound_keys[key] = keyfun  # First or New binding
+
+
+        
+    def on_text_end(self):
+        self.text_entry_funcid = self.master.unbind('<KeyPress>', self.text_entry_funcid)
+        self.track_keys()   # Reset keys to drawing cmds        
+        self.do_shift(False)
+        exit_infos = self.get_btn_infos(key="BKSP")
+        self.set_btn_image(exit_infos, image=None)
+        self.set_images(show=True)
+        self.set_marker(self.marker_before_letter)
+
+
+    def text_enter_key(self, key):
+        """ Process next entered letter marker
+        :key: letter to be placed
+        """
+        if len(key) == 1:
+            SlTrace.lg(f"text_enter_key: '{key}' ord:{ord(key)}")
+        else:
+            SlTrace.lg(f"text_enter_key: '{key}'")
+
+                            # Do special characters
+        if key == "END":
+            self.on_text_end()
+            return
+        
+        if key == "BKSP":
+            self.draw_undo()
+            return
+        
+        if key == "Left" or key == "Right" or key == "Up" or key == "Down":
+            self.move(key, just_move=True)
+            return True
+        
+        if key == "space".lower():
+            key = " "
+        
+        text_size = int(self.side)
+        font_size = 110
+        text_font = ImageFont.truetype("arial.ttf", size=font_size)
+        #text_font = ImageFont.truetype("courbd.ttf", size=text_size)
+        #text_font = ImageFont.truetype("tahoma.ttf", size=text_size)
+        text_color = self.next_color()
+        text_bg = "#ffffff"    
+
+        xy = (0,0)
+        image = Image.new("RGB", (text_size, text_size), (255,255,255))
+        draw = ImageDraw.Draw(image)      # Setup ImageDraw access
+        draw.text(xy, key, anchor=tk.N, font=text_font, fill=text_color,
+                  bg=text_bg)
+        ii = (None, image)
+        self.do_image(image_info=ii)
+
+        
     def line_next(self, shape=None, choose=None):
         """ Set line "shape"
         """
@@ -1433,11 +1571,33 @@ class KeyboardDraw:
         """
         self.trace("erase_side")
         self.tu.undo()
+
+    def is_text_input(self, input_char):
+        """ Handle text input chars/keys
+        :input_char: input char
         
-    def move(self, direct):
+        """
+        if self.marker_current != "letter":
+            return False 
+        
+        if input_char == "space".lower():
+            input_char = " "
+        elif input_char == "Left" or input_char == "Right" or input_char == "Up" or input_char == "Down":
+            return True        # Do standard movement
+        elif input_char == "BKSP":
+            self.draw_undo()
+            return True 
+        
+        self.text_enter_key(input_char)
+        return True 
+    
+    def move(self, direct, just_move=False):
         """ move a general direction
         using current shape
+        Adjusted to text input (self.marker_current)
         :direct: direction Up, Left, Right, Down
+        :juat_move: True - just move (no shape)
+                    default: False
         """
         self.trace(f"move: '{direct}'")
         self.draw_preaction(move_type=MoveInfo.MT_POSITION)
@@ -1486,11 +1646,17 @@ class KeyboardDraw:
         '''
         self.tu.setheading(self.heading)
         ###self.do_forward(self.side)
-        self.marker_next()
+        if just_move:
+            self.jump_to_next()
+        else:
+            self.marker_next()
         ###self.draw_postaction()
         
     def move_up(self):
-        self.move('Up')
+        if self.marker_current  == 'letter':
+            pass        # Done elsewhere
+        else:
+            self.move('Up')
         
     def move_left(self):
         self.move('Left')
@@ -1597,6 +1763,20 @@ class KeyboardDraw:
                 self.erase_if_marker()      # Erase current leg
             self.side *= 1.1
             self.image_next('same')
+            
+    def marker_rotate(self):       # '/'
+        move = self.move_current
+        if not self.new_pendown:
+            self.erase_if_marker()      # Erase current leg
+        self.heading += 45
+        if move.marker == "line":
+            self.shape_next()
+        elif move.marker == "shape":
+            self.shape_next()
+        elif move.marker == "image":
+            self.image_next('same')
+        elif move.marker == "letter":
+            self.image_next('same')
         
     def marker_shrink(self):
         """ Change current and subsequent lines to a thinner line
@@ -1634,7 +1814,7 @@ class KeyboardDraw:
         else:
             inc = 0
         im_file = ifg.get_file(inc=inc)
-        SlTrace.lg(f"get_image_file: {im_file}")
+        SlTrace.lg(f"get_image_file: {im_file}", "image_display")
         return im_file
 
     def get_image_hash(self):
@@ -1672,6 +1852,7 @@ class KeyboardDraw:
         """ Set current image group name and access
         """
         self.image_type = type_name
+
                   
     def make_side(self, sz):
         """ Make side (move) dimension
@@ -1748,6 +1929,10 @@ class KeyboardDraw:
             self.check(key)
             return
         
+        if self.marker_current == "letter":
+            self.text_enter_key(key=key)
+            return
+        
         fun_mat = re.match(r'^(\w+)\((.*)\)$', key)
         if fun_mat:
             self.print_key(key)
@@ -1778,30 +1963,17 @@ class KeyboardDraw:
             self.print_key(key)
             self.line_set(key)        # color with specification
             return
-        
-        
+         
         elif key in self.bound_keys:
             keyfun = self.bound_keys[key]
+        elif key in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" and key.lower() in self.bound_keys:
+            keyfun = self.bound_keys[key.lower()]
         else:
             print(f"key '{key}' is not yet bound - ignored")
             return
+        
         self.print_key(key)
         keyfun()
-    
-    
-    def bind_key(self, keyfun, key):
-        """ bind/unbind key to function
-        Binds key to function, if present
-        else unbind key
-        :keyfun: "No arg" function bound to key
-        :key: key pressed
-        """
-        if keyfun is None:
-            del self.bound_keys[key]        
-        else:
-            self.bound_keys[key] = keyfun  # First or New binding
-            
-        self.tu_screen.onkey(lambda  : self.do_key(key), key)
     
     def do_keys(self, keystr):
         """ Do action based on keystr
@@ -1850,7 +2022,90 @@ class KeyboardDraw:
         :key: key text
         """
         self.bind_key(keyfun, key)
+
+    def on_text_entry(self, event):
+        """ Text entry from keyboard
+        :event" key press event
+        """
+        inchar = event.char
+        keysym = event.keysym
+        keycode = event.keycode
+        SlTrace.lg(f"on_text_entry: keysym: {keysym} keycode: {keycode}")
+
+        if keysym == 'End':
+            key = "END"
+            self.text_enter_key(key)
+        elif keysym == 'BackSpace':
+            self.draw_undo()
+        elif keysym == 'Up' or keysym == 'Down' or keysym == 'Left' or keysym == 'Right':
+            self.move(direct=keysym, just_move=True)
+        else:
+            key = event.char
+            self.text_enter_key(key)
+
+    def on_text_entry_screen(self, key):
+        """ Text entry from screen keyboard
+        :key" key click
+        """
+        SlTrace.lg(f"on_text_entry_screen: key: {key}")
+
+        if key == "END":
+            self.on_text_end()
+            return
         
+        if key == "BKSP":
+            self.draw_undo()
+            return 
+        
+        self.text_enter_key(key=key)
+        
+    def track_keys_text(self):
+        """ Setup keys for text input
+        OLD:
+        self.text_chars = "abcdefghijklmnopqrstuvwxyz"
+        self.text_chars += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        self.text_chars += "01234567890"
+        self.text_chars += "!@#$%^&*()_+-="
+        self.text_chars += "[]\\{}| "
+        self.text_chars += ";':"
+        self.text_chars += ",./<>?"
+        self.text_chars += "\b"     # Special text processing
+        self.text_escape_chars = ["BKSP"]
+        for key in self.text_chars:
+            def ttkey(key=key):
+                self.text_enter_key(key=key)
+            self.track_key(ttkey, key)
+
+        for key in self.text_escape_chars:
+            self.track_key((lambda : self.text_enter_escape_key(key=key)), key)
+        
+        """
+        """ bind keyboard keys """
+        self.text_entry_funcid = self.master.bind('<KeyPress>', self.on_text_entry)
+        self.set_images(show=False)         # Display only keys (no shape images)
+        """ bind screen keyboard keys """
+        
+
+    def set_images(self, show=False):
+        self.screen_keyboard.set_images(show=show)
+
+    def get_btn_infos(self, key=None, row=None, col=None):
+        """ Get buttons
+        :key: if not None, must match
+        :row: if not None, must match
+        :col: if not None, must match
+        """
+        return self.screen_keyboard.get_btn_infos(key=key, row=row, col=col)
+
+    def set_btn_image(self, btn_infos=None, image=None):
+        """ Set button (btn_infos) image displayed
+        :btn_infos: ButtonInfo, or list of ButtonInfos
+        :image" text - image file
+                Image - image
+        """
+        self.screen_keyboard.set_btn_image(btn_infos=btn_infos, image=image)
+
+                            
     def track_keys(self):
         """ Setup key tracking
         """    
@@ -1858,6 +2113,7 @@ class KeyboardDraw:
         self.track_key(self.col_b, 'b')
         self.track_key(self.move_c, 'c')
         self.track_key((lambda : self.shape_next('nextone')), 'd')
+        self.track_key(self.letter_next, 'e')
         self.track_key(self.line_next, 'f')
         self.track_key(self.col_g, 'g')
         self.track_key(self.help, 'h')        
@@ -1889,6 +2145,7 @@ class KeyboardDraw:
         self.track_key(self.line_setting, ':')
         self.track_key(self.line_setting, ';')    # lower case :
         self.track_key(self.checking, '.')        # Converted to >
+        self.track_key(self.marker_rotate, '/')
         self.track_key(self.tracing, '!')
         self.track_key(self.move_shift, '')
         self.track_key(self.move_space, 'space')
@@ -1902,6 +2159,7 @@ class KeyboardDraw:
         self.track_key(self.move_7, '7')
         self.track_key(self.move_8, '8')
         self.track_key(self.move_9, '9')
+        
         
 
     def draw_undo(self):
@@ -1934,7 +2192,7 @@ class KeyboardDraw:
     def mouse_down (self, event):
         x_coord = event.x
         y_coord = event.y
-        SlTrace.lg(f"canvas_x,y: {x_coord, y_coord}")
+        SlTrace.lg(f"canvas_x,y: {x_coord, y_coord}", "mouse_down")
 
     def tu_canvas_coords(self, tu_coords=None):
         """ Canvas x coordinate
@@ -1978,7 +2236,7 @@ def main():
     app.resizable(0, 0)     # disable resizeable property
     """
     if hello_str is not None:
-        SlTrace.lg("Use internal default built in display")
+        pass
     else:
         try:
             with open(hello_file, 'r') as fin:
@@ -1988,12 +2246,15 @@ def main():
                            f"\n in {os.path.abspath(hello_file)}"
                            f"\n error: {e}")
             sys.exit() 
-    kb_draw = KeyboardDraw(app, hello_drawing_str=hello_str,
-                 draw_x=100, draw_y=50,
-                 draw_width=1500, draw_height=1000,
-                 kbd_win_x=50, kbd_win_y=25,
-                 kbd_win_width=600, kbd_win_height=300,
+    kb_draw = KeyboardDraw(app,  title="Keyboard Drawing",
+                hello_drawing_str=hello_str,
+                draw_x=100, draw_y=50,
+                draw_width=1500, draw_height=1000,
+                kbd_win_x=50, kbd_win_y=25,
+                kbd_win_width=600, kbd_win_height=300,
                            )
+
+    kb_draw.enable_image_update()      # Enable key image update
     
     kb_draw.tu_screen.listen()
     tk.mainloop()
