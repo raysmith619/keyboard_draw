@@ -34,12 +34,15 @@ class MoveInfo:
     MT_GENERAL = "mt_general"
     MT_MARKER = "mt_marker"
     MT_POSITION = "mt_position"
+    MT_ADJUSTMENT = "mt_adjustment"
     
     def __init__(self, drawer, move_type=None, marker=None,
                  shape=None, image_info=None,
-                 scale=None, line_width=None):
+                 scale=None, line_width=None,
+                 key=None):
         """  Marker/Shape info for undo / rotate operations
         :move_type: General move type
+                MT_ADJUSTMENT - current move is to be adjusted
                 MT_MARKER - new marker
                 MT_POSITION - position move
                 MT_GENERAL - general move (unknown)
@@ -54,8 +57,11 @@ class MoveInfo:
                 default: 1.0
         :line_width: line width
                 default: drawer.side
+        :key: move's text key, if one
         """
         self.drawer = drawer
+        self.undo_count_base = drawer.tu.undobufferentries()
+        self.canvas_tags = []       # Filled with this move's tags
         if move_type is None:
             move_type = MoveInfo.MT_GENERAL
         self.move_type = move_type
@@ -74,6 +80,14 @@ class MoveInfo:
         if line_width is None:
             line_width = drawer.current_width
         self.line_width = line_width
+        self.key = key
+        
+        def add_canvas_tag(self, tag):
+            """ Add tag to this move
+            :tag: tag to add
+            """
+            self.canvas_tags.append(tag)
+            
             
 class KeyboardDraw(SelectWindow):
 
@@ -150,53 +164,71 @@ class KeyboardDraw(SelectWindow):
         y_start = int(self.canvas_height/2 - side)
         side = self.side
         width = self.current_width
+        ostuff_x = x_start + side
+        ostuff_y = y_start - 6*side
+        hi_stuff_x = ostuff_x+5*side
+        hi_stuff_y = ostuff_y +1*side
+        hi_side = side/5
+            
         if hello_drawing_str == "BUILTIN":
             hello_drawing_str = f"""
             # Beginning screen pattern
             # Add in Family
             minus
+            line({side},{width})        # Set side, width
             moveto({x_start},{y_start})
             plus
-            image_file(family,alex);q
-            image_file(family,decklan);q
-            image_file(family,avery);q
-            image_file(family,charlie);q
-            image_file(family,willow);q
-            image_file(family,grammy);q
-            image_file(family,grampy);q
-            image_file(other_stuff,batman);q
+            e;F;a;m;i;l;y;END
+            newline();a;l;e;x;END;image_file(family,alex);q
+            newline();d;e;c;l;a;n;END;image_file(family,declan);q
+            newline();a;v;e;r;y;END;image_file(family,avery);q
+            newline();c;h;a;r;l;i;e;END;image_file(family,charlie);q
+            newline();;END
             minus
             
-            # Add in animals
-            k
-            plus
-            k;Right;a;a
-            k;Right;a:a
-            k;Right;a;a
-            k;Right;a;a
-            k;Right;a;a
+        ###    # Add in animals
+        ###    k
+        ###    plus
+        ###    k;Right;a;a
+        ###    k;Right;a:a
+        ###    k;Right;a;a
+        ###    k;Right;a;a
+        ###    k;Right;a;a
             
             # A bit of other stuff
-            minus;moveto({x_start+side},{y_start-2*side});plus
+            minus;moveto({ostuff_x},{ostuff_y});plus
             image_file(princesses,princess);q
-            minus; moveto({x_start+2*side},{y_start-3*side});plus
+            minus; moveto({ostuff_x+2*side},{ostuff_y-1*side});plus
             image_file(other_stuff,batman);q 
-            minus; moveto({x_start+3*side},{y_start-4*side});plus
+            minus; moveto({ostuff_x+4*side},{ostuff_y-2*side});plus
             image_file(other_stuff,baseball);q 
-            
+
+            """
+            hello_drawing_str += f"""
             minus
             # HI in middle of screen
-            line({side},{width*4})        # Set side: 100; width: 20
             shape(line)
-            moveto({int(-2.5*side)},{2*side})
             marker(line)
             shape(line)
-            plus
+            line({hi_side},{width})        # Set side, width
+            moveto({hi_stuff_x},{hi_stuff_y})
             w
-            Down;Down;Down;Down;Up;Up;Right;Right;Up;Up;Down;Down
-            Down;Down;Up;Up;minus;Right;Right;plus;Up;Up;Down;Down
-            Down;Down
+            plus
+            check
+            Down;Down;Down;Down;Down;Down;Down;Down
+            Up;Up;Up;Up; Right;Right; Up;Up;Up;Up
+            Down;Down;Down;Down;Down;Down;Down;Down
+            minus;Right;Right
             
+            plus
+            Up;Up;Up;Up;Up;Up;Up;Up
+            minus
+            
+            line({side},{width})        # Set side, width
+            Down;Down;Right;plus
+            """
+            
+            """
             # Line under
             minus
             line({side},{4})
@@ -257,6 +289,7 @@ class KeyboardDraw(SelectWindow):
             'line' : self.line_set,
             'marker' : self.set_marker,
             'moveto' : self.moveto_set,
+            'newline' : self.newline,
             'shape' : self.shape_next,
             }
 
@@ -426,6 +459,18 @@ class KeyboardDraw(SelectWindow):
         """ ignore key
         """
         self.trace("ignore key")
+
+        
+    def add_canvas_tag(self, tag):
+        """ Add tag to this move
+        :tag: tag to add
+        """
+        move = self.get_move()
+        if move is None:
+            SlTrace.lg(f"add_canvas_tag: No move for tag")
+            return
+        
+        move.canvas_tags.append(tag)
     
     def add_custom_color(self, colr):
         """ Add new custom color
@@ -569,6 +614,7 @@ class KeyboardDraw(SelectWindow):
         """ set set curent marker
         marker type , e.g. letter, line, shape, image
         is done via do_marker()
+        Sets current move_type to MoveInfo.MT_MARKER
         
         :marker: new marker
              default: use current marker
@@ -577,8 +623,12 @@ class KeyboardDraw(SelectWindow):
         """
         if changing is None:
             changing = self.marker_changing
-        marker = self.next_marker(marker=marker, changing = changing)
+        if marker is None:
+            marker = self.next_marker(marker=marker, changing = changing)
         self.marker_current = marker
+        move = self.get_move()
+        if move:
+            move.move_type = MoveInfo.MT_MARKER
         self.trace(f"set_marker:{marker}")
         
 
@@ -610,23 +660,102 @@ class KeyboardDraw(SelectWindow):
         """ drawing action that
         changes location
         """
+        self.trace_move_stack("draw_postaction")
+
         self.new_pendown = False
         self.cur_x, self.cur_y = self.tu.position()
         self.start_animation()
-        
-    def draw_preaction(self, move_type=MoveInfo.MT_GENERAL):
-        """ Before drawing action
+        self.trace_move_stack("draw_postaction AFTER")
+            
+    def draw_preaction(self, move_type=MoveInfo.MT_GENERAL,
+                       key=None, **kwargs):
+        """ Setup before drawing action
+            facilitates storage of move attributes
+                move_stack
+                turtle actions
+                canvas objects (tags)
+            to be completed by move specific functions
+            Storage completed/recorded by draw_postaction
+            Backing out move is via draw_undo
+            Moves that are an adjustment of the previous move
+            have move_type MT_ADJUSTMENT
+            
+        :move_type: comming move's type
+                    MT_GENERAL - general purpose
+                    MT_POSITION - positioning move no new markers
+                    MT_MARKER - creating marker
+                    MT_ADJUSTMENT - current move is to be adjusted
+                                    No new move is added to the stack
+                                    
+        :key: comming move's key, if one
+        :kwargs: supplimental keyword args for moves
+                augmentation, especially in adjustments
+                for undone redo situations
         """
+        tu_undo_count = self.tu.undobufferentries()
+        self.trace_move_stack("draw_preaction", move_type=move_type)
         self.stop_animation()
-        self.draw_undo_counts.append(self.tu.undobufferentries())
-        self.moves_canvas_tags.append([])   # start move canvas tag list
+        self.move_stack.append(MoveInfo(self, move_type=move_type, key=key))
+        
+        move = self.get_move()    
         self.x_cor = self.tu.xcor()
         self.y_cor = self.tu.ycor()
         SlTrace.lg(f"draw_preacion: x_cor={self.x_cor} y_cor={self.y_cor}", "draw_action")
         self.set_color()
         self.set_marker()
-        self.move_current = MoveInfo(self, move_type=move_type)
-        self.move_stack.append(self.move_current)
+        if 'width' in kwargs:
+            self.set_width(kwargs['width'])
+        if 'heading' in kwargs:
+            self.set_heading(kwargs['heading'])                
+        self.trace_move_stack("draw_preaction AFTER", move_type=move_type)
+
+    def trace_move_stack(self, prefix, move_type=None,
+                         key=None,
+                         flag=None):
+        """ Trace move stack including turtle, canvas, and move_stack
+        :prefix: text identifier
+        :move_type: if applicable
+        :key: key associated with move, if any
+        :flag: SelectTrace flag setting default: display
+        """
+        if flag and not SlTrace.trace(flag):
+            return
+        
+        move = self.get_move()
+        if move is None:
+            SlTrace.lg(f"{prefix} {key} {move_type}"
+                       f"   move_stack EMPTY")
+            return 
+        
+        if key is None:
+            
+            key = ""
+            if move:
+                key = move.key
+        move_id_str = ""
+        if move_type is not None:
+            move_id_str = f"({move_type})"
+        if SlTrace.trace(flag):
+            tu_undo_count = self.tu.undobufferentries()
+            
+            SlTrace.lg(f"{prefix} {key} {move_id_str}"
+                       f"   tags: {move.canvas_tags}"
+                       f"   undo_entries: {move.undo_count_base}"
+                       f"   move_stack len: {len(self.move_stack)}")
+        
+    def set_move(self, move_type=None, key=None):
+        """ Set/Adjust current move attributes
+        :move_type: move type
+        :key: associated key
+        """
+        move = self.get_move()
+        if move is None:
+            return
+        
+        if move_type is not None:
+            move.move_type = move_type
+        if key is not None:
+            move.key = key
         
     def stop_animation(self):
         """ Stop animation (speed up)
@@ -656,34 +785,35 @@ class KeyboardDraw(SelectWindow):
         else:
             SlTrace.lg(f"do_marker: unrecognized marker:{marker} - ignored")
 
-    def do_line(self):
+    def do_line(self, **kwargs):
         """ do line marker
         """
-        self.shape_line()
+        self.shape_line(**kwargs)
         
     def do_shape(self):
         """ Do shape marker
         """
         self.shape_next()
         
-    def do_image(self, image_info=None, move_to_next=True):
+    def do_image(self, image_info=None, move_to_next=True, key=None):
         """ Do image marker
         """
-        self.draw_preaction(move_type=MoveInfo.MT_MARKER)
+        self.set_move(move_type=MoveInfo.MT_MARKER, key=key)
         if self.tu.isdown():
             self.do_image_display(image_info=image_info)
         if move_to_next:
             self.jump_to_next()
-        self.draw_postaction()
     
     def do_image_display(self, image_info=None):
         """ Do image marker display
         """
         self.image_heading_default = 0
         if image_info is None:
-            image_key, image = self.get_marker_image()
-        else:
-            image_key, image = image_info
+            image_info = self.get_marker_image()
+        if image_info is None:
+            return
+        
+        image_key, image = image_info
         rotation = (self.heading + self.image_heading_default)%360
         if self.marker_current != "letter":
             if rotation > 90 and rotation < 270:
@@ -723,9 +853,9 @@ class KeyboardDraw(SelectWindow):
             ###anchor="nw",
             image=self.photo_image)
         """ Save for undo, but also for image reference """
-        if len(self.moves_canvas_tags) == 0:
-            self.moves_canvas_tags.append([])   # empty - add list
-        self.moves_canvas_tags[-1].append(self.marker_image_tag)
+        ###if len(self.moves_canvas_tags) == 0:
+        ###    self.moves_canvas_tags.append([])   # empty - add list
+        self.add_canvas_tag(self.marker_image_tag)
 
         self.tu_canvas.update()
 
@@ -799,11 +929,23 @@ class KeyboardDraw(SelectWindow):
             self.image_current = "rotate"
             self.erase_if_marker()
             self.image_chosen = self.pick_next_image()
+            move_type = MoveInfo.MT_ADJUSTMENT
+            move = self.get_move()
+            if move is None or move.move_type == MoveInfo.MT_ADJUSTMENT:
+                move_type = MoveInfo.MT_MARKER
+            self.draw_preaction(move_type=move_type)
+            self.set_pen_state()
+            self.do_image()
+            self.set_pen_state()
+            self.draw_postaction()
+            return
         else:
             self.image_chosen = self.pick_next_image()
+        self.draw_preaction()
         self.set_pen_state()
         self.do_image()
         self.set_pen_state()
+        self.draw_postaction()
 
 
     def pick_next_image(self):
@@ -843,22 +985,26 @@ class KeyboardDraw(SelectWindow):
         self.is_pendown = True
         self.tu.pendown()
     
-    def do_backward(self, side):
+    def do_backward(self, side=None, move_type=MoveInfo.MT_POSITION):
         """ Do backward operation
         :side: distance
         """
-        self.draw_preaction(move_type=MoveInfo.MT_POSITION)
+        if side is None:
+            side = self.side
+        self.set_move(move_type=move_type)
         self.tu.backward(side)
-        self.draw_postaction()
         
-    def do_forward(self, side):
-        self.draw_preaction(move_type=MoveInfo.MT_POSITION)
+    def do_forward(self, side=None, move_type=MoveInfo.MT_POSITION):
+        if side is None:
+            side = self.side
+        self.set_move(move_type=move_type)
+        self.set_width(self.current_width)
         self.tu.forward(side)
-        self.draw_postaction()
         
     def clear_all(self):
         """ Clear screen
         """
+        self.move_undo = None   # Most recently undone
         self.move_stack = []    # Stack moves in draw_preaction()
         self.set_image_type(KeyboardDraw.IT_FILE)
         self.tu.speed("fastest")
@@ -1036,13 +1182,13 @@ class KeyboardDraw(SelectWindow):
             if leng is None or (type(leng) == str and leng == ""):
                 leng_new = self.side
             else:
-                leng_new = int(leng)
+                leng_new = int(float(leng))
             self.side = leng_new
             if wid is None or (type(wid) == str and wid == ""):
                 wid_new = self.current_width
             else:
                 self.current_width = int(wid)
-        self.tu.width(self.current_width)
+        self.set_width(self.current_width)
         self.trace(f"End of line_set width:{self.current_width}, leng:{self.side}")
             
     def moveto_set(self, x=None, y=None, choose=None):
@@ -1082,7 +1228,7 @@ class KeyboardDraw(SelectWindow):
             if x is None or (type(x) == str and x == ""):
                 x_new = x_cor
             else:
-                x_new = int(x)
+                x_new = int(float(x))
             if y is None or (type(y) == str and y == ""):
                 y_new = y_cor
             else:
@@ -1099,12 +1245,10 @@ class KeyboardDraw(SelectWindow):
         """
         if is_move:
             self.no_move_backup = True
-            self.draw_preaction(move_type=MoveInfo.MT_POSITION)       # Buffer against loosing move
+            self.set_move(move_type=MoveInfo.MT_POSITION)       # Buffer against loosing move
         self.x_cor = x
         self.y_cor = y
         self.tu.setposition(x, y)
-        if is_move:
-            self.draw_postaction()
     
     def line_setting(self):
         self.line_set(choose=True)
@@ -1147,9 +1291,9 @@ class KeyboardDraw(SelectWindow):
                 self.tu.penup()
         if heading is None:
             heading = self.heading
-        self.tu.setheading(heading)
+        self.set_heading(heading, change=False)
         self.tu.forward(distance)
-        self.tu.setheading(self.heading)        # Restore heading       
+        self.set_heading(self.heading)        # Restore heading       
         self.set_pen_state()            # Restore pen state
                 
     def jump_to_next(self):
@@ -1158,7 +1302,7 @@ class KeyboardDraw(SelectWindow):
         
         if self.tu.isdown():
             self.tu.penup()
-        self.tu.setheading(self.heading)
+        self.set_heading(self.heading)
         theta = math.radians(self.heading)
         x_chg = self.side*math.cos(theta)
         y_chg = self.side*math.sin(theta)
@@ -1173,7 +1317,7 @@ class KeyboardDraw(SelectWindow):
         
         if self.tu.isdown():
             self.tu.penup()
-        self.tu.setheading(self.heading)
+        self.set_heading(self.heading)
         down_heading = self.heading - 90    # Down to next line
         theta = math.radians(down_heading)
         x_chg = self.side*math.cos(theta)
@@ -1190,7 +1334,15 @@ class KeyboardDraw(SelectWindow):
         """
         self.text_line_begin_x = self.x_cor
         self.text_line_begin_y = self.y_cor
+        if self.marker_current != "letter":
+            self.letter_next()
         
+
+    def newline(self, nline=1):
+        """ Position drawing to next line (after previous text)
+        :nline: number of lines to advance
+        """
+        self.jump_to_next_line()
         
     def shape_circle(self):
         """ Display circle
@@ -1199,9 +1351,9 @@ class KeyboardDraw(SelectWindow):
         """
         #self.erase_if_marker()
         cir_heading = self.heading + 90
-        self.tu.setheading(cir_heading)
+        self.set_heading(cir_heading, change=False)
         self.tu.circle(-self.side/2)
-        self.tu.setheading(self.heading)
+        self.set_heading(self.heading)
         self.jump_to_next()
 
     def shape_image(self, name=None):
@@ -1238,24 +1390,31 @@ class KeyboardDraw(SelectWindow):
         our_heading = self.heading
         for _ in range(3):
             our_heading += 90     # 90,90,90
-            self.tu.setheading(our_heading)
+            self.set_heading(our_heading, change=False)
             self.tu.forward(self.side)
         self.tu.end_fill()
-        self.tu.setheading(self.heading)    # Insure going right direction
+        self.set_heading(self.heading)    # Insure going right direction
         ###self.jump_to(heading=self.heading+90, distance=self.side/2)
         self.jump_to_next()
 
-    def shape_line(self):
+    def shape_line(self, **kwargs):
         SlTrace.lg("shape_line", "shape_display")
         """ Display line
             line, in direction of current heading,
             color,...
         """
         #self.erase_if_marker()
-        
+        self.set_marker()
         SlTrace.lg(f"shape_line from: x_cor,y_cor:{self.tu.xcor():.0f}, {self.tu.ycor():.0f}", "shape_display")
-        self.tu.setheading(self.heading)
-        self.tu.forward(self.side)
+        if 'width' in kwargs:
+            self.set_width(kwargs['width'])
+        else:
+            self.set_width(self.current_width)
+        if 'heading' in kwargs:
+            self.set_heading(kwargs['heading'])
+        else:
+            self.set_heading(self.heading)
+        self.do_forward(self.side, move_type= MoveInfo.MT_MARKER)
         SlTrace.lg(f"shape_line  to: x_cor,y_cor:{self.tu.xcor():.0f}, {self.tu.ycor():.0f}", "shape_display")
         
                 
@@ -1278,12 +1437,12 @@ class KeyboardDraw(SelectWindow):
         #self.tu.begin_fill()
         for _ in range(3):
             our_heading -= 120     # 60,60,60
-            self.tu.setheading(our_heading)
+            self.set_heading(our_heading, change=False)
             self.tu.forward(self.side)
         self.tu.end_fill()
         ###self.jump_to(heading=self.heading-90,
         ###              distance=self.side/2)
-        self.tu.setheading(self.heading)    # Insure going right direction
+        self.set_heading(self.heading)    # Insure going right direction
         ###self.jump_to(heading=self.heading-90, distance=self.side/2)
         self.jump_to_next()
 
@@ -1345,12 +1504,14 @@ class KeyboardDraw(SelectWindow):
         
         
         
-    def marker_next(self):
+    def marker_next(self, **kwargs):
         """ Go to next marker if that is changing,
             else to the next shape if that is changing
             else to the next line
             and do the appropriate marker/shape/line
+            :kwargs:  suplimental settings
         """
+        self.set_move(move_type=MoveInfo.MT_MARKER)
         if self.marker_changing:
             self.set_marker(changing=self.marker_changing)
         if self.marker_current == "image":
@@ -1360,7 +1521,7 @@ class KeyboardDraw(SelectWindow):
             self.shape_next()
         elif self.marker_current == "line":
             self.color_set()
-            self.do_line()
+            self.do_line(**kwargs)
         elif self.marker_current == "letter":
             self.jump_to_next()                    # Move one space
         else:
@@ -1376,11 +1537,14 @@ class KeyboardDraw(SelectWindow):
     def letter_next(self):
         """ Set letter "shape"
         """
+        if self.marker_current == "letter":
+            return
+        
         self.marker_before_letter = self.marker_current
+        self.set_marker("letter")
         self.set_new_line()
         if self.marker_before_letter != "letter":
             self.jump_to(distance=self.side/2)
-        self.set_marker("letter")
         self.do_shift()     # Default to uppercase
         self.do_pendown()   # Default to visible
         self.set_images(show=False)
@@ -1447,17 +1611,19 @@ class KeyboardDraw(SelectWindow):
             self.on_text_end()
             return
         
-        if key == "ENTER":
-            self.jump_to_next_line()
-            return
         
         if key == "BKSP":
             self.draw_undo()
             return
         
-        if key == "Left" or key == "Right" or key == "Up" or key == "Down":
+        self.draw_preaction(key=key)
+        if key == "ENTER":
+            self.jump_to_next_line()
+            self.draw_postaction()        
+        elif key == "Left" or key == "Right" or key == "Up" or key == "Down":
             self.move(key, just_move=True)
             self.set_new_line()     # Set as beginning of line
+            self.draw_postaction()
             return
         
         if key == "space".lower():
@@ -1479,8 +1645,8 @@ class KeyboardDraw(SelectWindow):
         draw.text(xy, key, anchor="mt", font=text_font, fill=text_color,
                   bg=text_bg)
         ii = (None, image)
-        self.do_image(image_info=ii)
-
+        self.do_image(image_info=ii, key=key)
+        self.draw_postaction()
         
     def line_next(self, shape=None, choose=None):
         """ Set line "shape"
@@ -1523,10 +1689,10 @@ class KeyboardDraw(SelectWindow):
         else:
             display_shape = self.shape_current
         shape_fun = self.shapes[display_shape]
-        self.draw_preaction(move_type=MoveInfo.MT_MARKER)
         self.set_pen_state()
         shape_fun()
         self.set_pen_state()
+        self.set_move(move_type=MoveInfo.MT_MARKER)
         
     def shape_change(self, shape_str=None, choose=None):
         """Set shape
@@ -1615,45 +1781,33 @@ class KeyboardDraw(SelectWindow):
         self.trace("erase_side")
         self.tu.undo()
     
-    def move(self, direct, just_move=False):
+    def move(self, direct, just_move=False, **kwargs):
         """ move a general direction
         using current shape
         Adjusted to text input (self.marker_current)
         :direct: direction Up, Left, Right, Down
         :just_move: True - just move (no shape)
                     default: False
+        :kwargs: suplimental parameters for adjustments
         """
         self.trace(f"move: '{direct}'")
-        self.draw_preaction(move_type=MoveInfo.MT_POSITION)
-        if direct == 'Up':
-            self.heading = 90
-            self.jump_to_next()
-            self.set_new_line()
-            return
-        
-        elif direct == 'Left':
-            self.heading = 180
-            self.jump_to_next()
-            self.set_new_line()
-            return
-        
-        elif direct == 'Right':
-            self.heading = 0
-            self.jump_to_next()
-            self.set_new_line()
-            return
-        
-        elif direct == 'Down':
-            self.heading = 270
-            self.jump_to_next()
-            self.set_new_line()
-            return
-        
+        self.set_move(move_type=MoveInfo.MT_MARKER)     # Most likely
+        uplr = {'Up' : 90, 'Left' : 180, 'Right' : 0, 'Down' : 270}
+        if direct in uplr:
+            self.heading = uplr[direct]
+            if self.marker_current == "letter":
+                self.set_new_line()
+            if just_move or self.marker_current != "line":
+                self.set_move(move_type=MoveInfo.MT_POSITION)
+                self.jump_to_next()
+            else:
+                self.do_forward(move_type=MoveInfo.MT_MARKER)
         elif direct in "12346789": # Digit moves
             dig2head = {'6':0, '9':45, '8':90,
                         '7':135, '4':180, '1':225,
                         '2':270, '3':315, '6':0,
                         }
+            self.set_move(move_type=MoveInfo.MT_MARKER)
             self.heading = dig2head[direct]
         elif direct == '5':     # rotate 45 deg left
             self.heading += 45
@@ -1684,12 +1838,12 @@ class KeyboardDraw(SelectWindow):
         else:    
             self.set_visible_color(self.colors[self.color_index])
         '''
-        self.tu.setheading(self.heading)
+        self.set_heading(self.heading)
         ###self.do_forward(self.side)
         if just_move:
             self.jump_to_next()
         else:
-            self.marker_next()
+            self.marker_next(**kwargs)
         ###self.draw_postaction()
         
     def move_up(self):
@@ -1732,35 +1886,35 @@ class KeyboardDraw(SelectWindow):
         self.trace("move_plus")
         self.set_pen_state(True)
         
-    def move_0(self):
-        self.move('0')
+    def move_0(self, **kwargs):
+        self.move('0', **kwargs)
     
-    def move_1(self):
-        self.move('1')
+    def move_1(self, **kwargs):
+        self.move('1', **kwargs)
     
-    def move_2(self):
-        self.move('2')
+    def move_2(self, **kwargs):
+        self.move('2', **kwargs)
     
-    def move_3(self):
-        self.move('3')
+    def move_3(self, **kwargs):
+        self.move('3', **kwargs)
     
-    def move_4(self):
-        self.move('4')
+    def move_4(self, **kwargs):
+        self.move('4', **kwargs)
     
-    def move_5(self):
-        self.move('5')
+    def move_5(self, **kwargs):
+        self.move('5', **kwargs)
     
-    def move_6(self):
-        self.move('6')
+    def move_6(self, **kwargs):
+        self.move('6', **kwargs)
     
-    def move_7(self):
-        self.move('7')
+    def move_7(self, **kwargs):
+        self.move('7', **kwargs)
     
-    def move_8(self):
-        self.move('8')
+    def move_8(self, **kwargs):
+        self.move('8', **kwargs)
     
-    def move_9(self):
-        self.move('9')
+    def move_9(self, **kwargs):
+        self.move('9', **kwargs)
     
     def move_space(self):
         self.move('space')
@@ -1772,68 +1926,72 @@ class KeyboardDraw(SelectWindow):
         if self.current_width > 2:
             if not self.new_pendown:
                 self.erase_if_marker()      # Erase current leg
-            self.current_width -= 2
-            self.tu.width(self.current_width)
-            self.shape_next()
+            current_width = self.current_width - 2
+            if self.move_undo and self.move_undo.key:
+                self.do_key(self.move_undo.key, width=current_width)
 
     def line_widen(self):
         if not self.new_pendown:
             self.erase_if_marker()      # Erase current leg
-        self.current_width += 2
-        self.tu.width(self.current_width)
-        self.shape_next()
-            
-    def marker_enlarge(self):       # 't'
-        move = self.move_current
-        if move.marker == "line":
-            if not self.new_pendown:
-                self.erase_if_marker()      # Erase current leg
-            self.side *= 1.1
-            self.shape_next()
-        elif move.marker == "shape":
-            if not self.new_pendown:
-                self.erase_if_marker()      # Erase current leg
-            self.side *= 1.1
-            self.shape_next()
-        elif move.marker == "image":
-            if not self.new_pendown:
-                self.erase_if_marker()      # Erase current leg
-            self.side *= 1.1
-            self.image_next('same')
-            
-    def marker_rotate(self):       # '/'
-        move = self.move_current
+        current_width = self.current_width + 2
+        if self.move_undo and self.move_undo.key:
+            self.do_key(self.move_undo.key, width=current_width)
+
+    def marker_scale(self, factor):
+        """ Scale current marker by factor
+        :factor: factor to scale side
+        """
         if not self.new_pendown:
             self.erase_if_marker()      # Erase current leg
-        self.heading += 45
-        if move.marker == "line":
-            self.shape_next()
-        elif move.marker == "shape":
-            self.shape_next()
+            if self.move_undo and self.move_undo.key:
+                self.side *= factor
+                self.do_key(self.move_undo.key)
+        '''if image needs special case
         elif move.marker == "image":
-            self.image_next('same')
-        elif move.marker == "letter":
-            self.image_next('same')
+            self.side *= 1.1
+            if self.move_undo and self.move_undo.key:
+                self.do_key(self.move_undo.key)
+            ###self.image_next('same')
+        '''
+                    
+    def marker_enlarge(self):       # 't'
+        self.marker_scale(1+self.enlarge_fraction)
         
     def marker_shrink(self):
         """ Change current and subsequent lines to a thinner line
         """
-        move = self.move_current
-        if move.marker == "line":
-            if not self.new_pendown:
-                self.erase_if_marker()      # Erase current leg
-            self.side /= 1.1
-            self.shape_next()
-        elif move.marker == "shape":
-            if not self.new_pendown:
-                self.erase_if_marker()      # Erase current leg
-            self.side /= 1.1
-            self.shape_next()
-        elif move.marker == "image":
-            if not self.new_pendown:
-                self.erase_if_marker()      # Erase current leg
-            self.side /= 1.1
-            self.image_next('same')
+        self.marker_scale(1/(1+self.enlarge_fraction))
+            
+    def marker_rotate(self):       # '/'
+        if not self.new_pendown:
+            self.erase_if_marker()      # Erase current leg
+            heading = self.heading + 45
+            if self.move_undo:
+                move = self.move_undo
+                if move.shape == "line":
+                    self.draw_preaction(key=move.key)
+                    self.set_heading(heading)
+                    self.do_forward(move_type=MoveInfo.MT_MARKER)
+                    self.draw_postaction()
+                elif move.key:
+                    self.do_key(move.key, heading=self.heading) 
+        
+        ''' pre-do_key approach
+        move = self.get_move()
+        if move:
+            self.erase_if_marker()      # Erase current leg
+            self.heading += 45
+            if move.marker == "line":
+                self.shape_next()
+            elif move.marker == "shape":
+                self.shape_next()
+            elif move.marker == "image":
+                self.image_next('same')
+            elif move.marker == "letter":
+                self.letter_next()
+                self.text_enter_key(move.key)
+                self.on_text_end()
+        '''
      
     def get_image_files(self):
         """ get current image group's files
@@ -1880,6 +2038,29 @@ class KeyboardDraw(SelectWindow):
             ifg = self.ifh.get_group(name)
         return ifg
 
+    def set_heading(self, heading, change=True):
+        """ Set heading, changing only if not already there
+        :heading: heading to to
+        :change: change self.heading, default: True - update self.heading
+        """
+        if change:
+            self.heading = heading
+        tu_heading = self.tu.heading()
+        if heading != tu_heading:
+            self.tu.setheading(heading)
+            
+    def set_width(self, width, change=True):
+        """ Set line width, if necessary
+        :width: line width in pixelx
+        :change: Change current width
+                default: True
+        """
+        tu_width = self.tu.width()
+        if change:
+            self.current_width = width
+        if width != tu_width:
+            self.tu.width(width)
+            
     def set_image_group(self, group_name):
         """ Set current image group name and access
         """
@@ -1912,16 +2093,6 @@ class KeyboardDraw(SelectWindow):
             self.tu.undo()
         self.make_side(self.side/(1+self.enlarge_fraction))
         self.do_forward(self.side)
-
-    def rotate_marker(self, angle=None):
-        """ Rotate current (last created) marker
-        :angle: counter clockwise angle (degrees)
-                default: 45 degrees
-        """
-        if angle is None:
-            angle = 45
-            
-        SlTrace.report(f"rotate_marker not ready yet")
         
     def move_shift(self):
         pass
@@ -1955,11 +2126,13 @@ class KeyboardDraw(SelectWindow):
         self.nk += len(exp_key)
         print(exp_key, end="")
         
-    def do_key(self, key):
+    def do_key(self, key, **kwargs):
         """ Process key by
         calling keyfun, echoing key
         :key: key (descriptive string) pressed
                 or special "key" e.g. =<color spec>
+        :kwargs: function specific parameters
+                often to "redo" adjusted undone operations
         """
         SlTrace.lg(f"do_key({key})")
         if key == 'check':
@@ -1969,6 +2142,10 @@ class KeyboardDraw(SelectWindow):
         
         if self.marker_current == "letter":            
             self.text_enter_key(key=key)
+            return
+        
+        if key == "u":
+            self.draw_undo()
             return
         
         fun_mat = re.match(r'^(\w+)\((.*)\)$', key)
@@ -1984,7 +2161,9 @@ class KeyboardDraw(SelectWindow):
                 return 
             
             fun_args = re.split(r'\s*,\s*', args_str)
+            self.draw_preaction(key=key)
             fun_fun(*fun_args)
+            self.draw_postaction()
             return
         
         if re.match(r'^moveto:?.*', key):
@@ -2011,7 +2190,23 @@ class KeyboardDraw(SelectWindow):
             return
         
         self.print_key(key)
-        keyfun()
+        adj_keys = ["a",    # marker_shrink
+                    "k",    # marker_animals
+                    "q",    # marker_enlarge
+                    "t",    # line_widen
+                    "x",    # line_narrow
+                    "/",    # markerk_rotate
+                    ]
+        if key in adj_keys:
+            self.trace_move_stack("adjusting move", key=key)
+            keyfun()            # stack arrangement
+                                # unchanged, just new entries
+            self.trace_move_stack("adjusting move AFTER", key=key)
+        else:
+            move_type = MoveInfo.MT_MARKER
+            self.draw_preaction(key=key, move_type=move_type, **kwargs)
+            keyfun(**kwargs)
+            self.draw_postaction()
     
     def do_keys(self, keystr):
         """ Do action based on keystr
@@ -2215,23 +2410,41 @@ class KeyboardDraw(SelectWindow):
         returns a number greater than the stack entry
         count
         """
-        """ Undo turtle actions, if any.  """
-        if len(self.draw_undo_counts) > 0:        
-            prev_count = self.draw_undo_counts.pop()
-            while self.tu.undobufferentries() > prev_count:
-                self.tu.undo()
+        self.trace_move_stack("draw_undo", flag="draw_undo")
 
-        """ Undo canvas (e.g. image) actions if any """
-        if len(self.moves_canvas_tags) > 0:
-            canvas_tags = self.moves_canvas_tags.pop()
-            for canvas_tag in canvas_tags:
-                self.tu_canvas.delete(canvas_tag)
-
-        """ Undo move
+        """ Undo move (limits undo)
             Might consider combining with canvas undo
         """
-        if len(self.move_stack) > 0:
-            self.move_stack.pop()
+        """ Undo canvas (e.g. image) actions if any
+            Have to do check before move because we keep
+            the stacks diferently because move_stack[0] remains
+        """
+        move = self.get_move()
+        if move is None:
+            SlTrace.lg("draw_undo: Empty Stack - can't undo")
+            return 
+        
+        if len(move.canvas_tags) > 0:
+            canvas_tags = move.canvas_tags
+            for canvas_tag in canvas_tags:
+                self.tu_canvas.delete(canvas_tag)
+        
+        if len(self.move_stack) > 0:        # current is on top of stack
+            self.move_undo = self.move_stack.pop()
+        else:    
+            self.trace_move_stack("draw_undo AFTER - no more undos", flag="draw_undo")
+            return
+       
+        
+        """ Undo turtle actions, if any.  """
+        if len(self.draw_undo_counts) > 0:        
+            while (tu_undo_count:=self.tu.undobufferentries()) > move.undo_count_base:
+                SlTrace.lg(f"tu_undo_count: {tu_undo_count}")
+                self.tu.undo()
+            SlTrace.lg(f"undo_count: {tu_undo_count}")
+
+        self.master.update_idletasks()
+        self.trace_move_stack("draw_undo AFTER")
             
     def mouse_down (self, event):
         x_coord = event.x
@@ -2259,6 +2472,7 @@ def main():
     trace = ""
     hello_str = None
     hello_file = "keyboard_draw_hello.txt"
+    hello_file = "hello_family.txt"
     parser = argparse.ArgumentParser()
     parser.add_argument('--trace', dest='trace', default=trace)
     parser.add_argument('--data_dir', dest='data_dir', default=data_dir)
