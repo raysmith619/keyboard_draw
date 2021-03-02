@@ -103,6 +103,8 @@ class KeyboardDraw(SelectWindow):
                  side=100,
                  width=20,
                  hello_drawing_str=None,
+                 with_screen_kbd=True,
+                 show_help=True,
                  **kwargs
                  ):
         """ Keyboard Drawing tool
@@ -124,6 +126,10 @@ class KeyboardDraw(SelectWindow):
                 default: 20
         :hello_drawing_str: Beginning display command string
                 default: HI...
+        :with_screen_kbd: Has screen keyboard control
+                    default: True
+        :show_help: Show help text at beginning
+                    default: True
         """
         control_prefix = "KbdDraw"
         super().__init__(master,title=title,
@@ -301,23 +307,25 @@ class KeyboardDraw(SelectWindow):
         
         self.enlarge_fraction = .2   # Enlargement fraction
         self.track_keys()
-        if kbd_master is None:
-            kbd_master = tk.Toplevel()
-        self.kbd_master = kbd_master
-        """ Using ScreenKbd
-        self.screen_keyboard = ScreenKbd(kbd_master, on_kbd=self.do_key,
-                                          title="Let's Make a Drawing!")
-        """
-        self.screen_keyboard = ScreenKbdFlex(kbd_master, on_kbd=self.do_key,
-                                        win_x=kbd_win_x,
-                                        win_y=kbd_win_y,
-                                        win_width=kbd_win_width,
-                                        win_height=kbd_win_height,
-                                          title="Let's Make a Drawing!")
-        self.screen_keyboard.to_top()   # Just earlier to see problems
-        self.do_keys(self.hello_drawing_str)
-        self.screen_keyboard.to_top()
-        self.help()
+        if with_screen_kbd:
+            if kbd_master is None:
+                kbd_master = tk.Toplevel()
+            self.kbd_master = kbd_master
+            """ Using ScreenKbd
+            self.screen_keyboard = ScreenKbd(kbd_master, on_kbd=self.do_key,
+                                              title="Let's Make a Drawing!")
+            """
+            self.screen_keyboard = ScreenKbdFlex(kbd_master, on_kbd=self.do_key,
+                                            win_x=kbd_win_x,
+                                            win_y=kbd_win_y,
+                                            win_width=kbd_win_width,
+                                            win_height=kbd_win_height,
+                                              title="Let's Make a Drawing!")
+            self.screen_keyboard.to_top()   # Just earlier to see problems
+            self.do_keys(self.hello_drawing_str)
+            self.screen_keyboard.to_top()
+        if show_help:
+            self.help()
     
     def enable_image_update(self, enable=True):
         """ Enable/Disable kbd image update
