@@ -8,11 +8,11 @@ from PIL import ImageDraw, ImageFont
 
 from select_trace import SlTrace
 
-from draw_marker import DrawMarker
+from dm_marker import DmMarker
 
 """ Support for image marker turtle style
 """
-class DmImage(DrawMarker):    
+class DmImage(DmMarker):    
     def __init__(self, drawer,
                  draw_type=None,
                  file=None, image_base=None,
@@ -25,7 +25,7 @@ class DmImage(DrawMarker):
         :image_base: base image, if one
                     May be added later via set_image_base()
         :marker_type: marker type (.e.g "letter")
-        :kwargs: basic DrawMarker args
+        :kwargs: basic DmMarker args
         """
         if draw_type is None:
             draw_type = super().DT_IMAGE
@@ -71,7 +71,7 @@ class DmImage(DrawMarker):
         if self.marker_type != "letter":
             image = image.rotate(rotation)
         photo_image = ImageTk.PhotoImage(image)
-        self.images.append(photo_image)     # Save resource or may lose it
+        self.add_image_ref(photo_image)     # Save resource or may lose it
         #canvas_x, canvas_y = self.x_cor, self.y_cor
         #canvas_x, canvas_y = self.x_cor, self.y_cor
         #canvas_x, canvas_y = 0,0

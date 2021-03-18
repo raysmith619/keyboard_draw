@@ -2,13 +2,15 @@
 """
 Line marker
 """
+from tkinter import *
+
 from select_trace import SlTrace
 
-from draw_marker import DrawMarker
+from dm_marker import DmMarker
 
 """ Support for line marker
 """
-class DmPointer(DrawMarker):    
+class DmPointer(DmMarker):    
     def __init__(self, drawer, plen=None,
                 **kwargs
                   ):
@@ -16,7 +18,7 @@ class DmPointer(DrawMarker):
         :drawer: drawing control
         :plen: pointer line length
             default=5
-        :kwargs: basic DrawMarker args
+        :kwargs: basic DmMarker args
         """
         super().__init__(drawer, draw_type=super().DT_POINTER, **kwargs)
         if plen is None:
@@ -35,7 +37,6 @@ class DmPointer(DrawMarker):
         
 
 if __name__ == "__main__":
-    from tkinter import *
     
     from keyboard_draw import KeyboardDraw
     

@@ -6,16 +6,16 @@ from tkinter import *
 
 from select_trace import SlTrace
 
-from draw_marker import DrawMarker
+from dm_marker import DmMarker
 
 """ Support for line marker
 """
-class DmLine(DrawMarker):    
+class DmLine(DmMarker):    
     def __init__(self, drawer, **kwargs
                   ):
         """ Setup basic marker state
         :drawer: drawing control
-        :kwargs: basic DrawMarker args
+        :kwargs: basic DmMarker args
         """
         super().__init__(drawer, draw_type=super().DT_LINE, **kwargs)
 

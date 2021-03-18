@@ -16,6 +16,9 @@ import argparse
 from select_trace import SlTrace
 from select_list import SelectList
 from select_window import SelectWindow
+from command_manager import CommandManager
+from dm_pointer import DmPointer
+from Lib.pickle import NONE
 
 """ Using ScreenKbd
 from screen_kbd import ScreenKbd
@@ -105,6 +108,7 @@ class KeyboardDraw(SelectWindow):
                  hello_drawing_str=None,
                  with_screen_kbd=True,
                  show_help=True,
+                 use_command=False,
                  **kwargs
                  ):
         """ Keyboard Drawing tool
@@ -130,12 +134,24 @@ class KeyboardDraw(SelectWindow):
                     default: True
         :show_help: Show help text at beginning
                     default: True
+        :use_command:  True - do commands via command_manager
+                                        draw_command,...
+                        False - do commands via legacy code
+                    default: False
         """
         control_prefix = "KbdDraw"
+        self.x_cor = None 
+        self.y_cor = None 
+        self.heading = 0
+        self.color_current = "red"
+        self.color_changing = True
+        self.color_index = 0
         super().__init__(master,title=title,
                          control_prefix=control_prefix,
                          **kwargs)
-
+        self.use_command = use_command
+        self.cmd_pointer = None     # marker pointer
+        self.command_manager = CommandManager(self)
         
         if canvas is None:
             canvas = tk.Canvas(master=master,
@@ -150,21 +166,25 @@ class KeyboardDraw(SelectWindow):
 
         self.tu_canvas.bind ("<ButtonPress>", self.mouse_down)
         self.tu_screen = turtle.TurtleScreen(self.tu_canvas)
-        self.tu = turtle.RawTurtle(self.tu_canvas)
+        if self.use_command:
+            """ Only for command based stuff
+            """
+        else:
+            """ Only for legacy - turtle based stuff
+            """
+            self.tu = turtle.RawTurtle(self.tu_canvas)
+            self.master.bind("<KeyPress>", self.on_key_press)
+            self.tu.setundobuffer(undomax)
+            self.draw_undo_counts = [self.tu.undobufferentries()] # undo counts
         
         """ Setup our own, outside turtle, key processing """
         self.bound_keys = {}     # functions, bound to keys
-        self.master.bind("<KeyPress>", self.on_key_press)
 
-        self.tu.setundobuffer(undomax)
-        self.draw_undo_counts = [self.tu.undobufferentries()] # undo counts
         self.master = master
         self.side = side
         self.current_width = width
         self.do_trace = False    # Set True to do debugging trace
         self.do_trace = True
-        ###self.turtle_cv = self.tu.getcanvas()
-        ###SlTrace.lg(f"turtle: width:{self.turtle_cv.canvwidth} height:{self.turtle_cv.canvheight}")
         self.set_key_mapping()
         x_start = int(-self.canvas_width/2 + side)
         y_start = int(self.canvas_height/2 - side)
@@ -488,7 +508,13 @@ class KeyboardDraw(SelectWindow):
         self.custom_colors.append(colr)
         self.color_index = len(self.custom_colors)-1
         self.set_color()
-                
+
+    def set_command_manager(self, mgr):
+        """ Set drawing command manager
+        :mgr: command manager for do, undo...
+        """
+        self.cmd_mgr = mgr
+                        
     def set_color(self, colr=None, changing=None):
         """ set color, with no move
         :colr: new color
@@ -527,8 +553,9 @@ class KeyboardDraw(SelectWindow):
         else:
             self.color_current = colr
             self.color_changing = changing
-        new_color = self.next_color()    
-        self.tu.color(new_color)
+        new_color = self.next_color()
+        if not self.use_command:    
+            self.tu.color(new_color)
 
     def next_color(self, colr=None, changing=None):
         """ Get next color based on color_current, color_changing
@@ -671,8 +698,9 @@ class KeyboardDraw(SelectWindow):
         self.trace_move_stack("draw_postaction")
 
         self.new_pendown = False
-        self.cur_x, self.cur_y = self.tu.position()
-        self.start_animation()
+        if not self.use_command:
+            self.cur_x, self.cur_y = self.tu.position()
+            self.start_animation()
         self.trace_move_stack("draw_postaction AFTER")
             
     def draw_preaction(self, move_type=MoveInfo.MT_GENERAL,
@@ -700,14 +728,16 @@ class KeyboardDraw(SelectWindow):
                 augmentation, especially in adjustments
                 for undone redo situations
         """
-        tu_undo_count = self.tu.undobufferentries()
         self.trace_move_stack("draw_preaction", move_type=move_type)
-        self.stop_animation()
-        self.move_stack.append(MoveInfo(self, move_type=move_type, key=key))
+        if not self.use_command:
+            self.stop_animation()
+            tu_undo_count = self.tu.undobufferentries()
+            self.move_stack.append(MoveInfo(self, move_type=move_type, key=key))
         
-        move = self.get_move()    
-        self.x_cor = self.tu.xcor()
-        self.y_cor = self.tu.ycor()
+        move = self.get_move()
+        if not self.use_command:    
+            self.x_cor = self.tu.xcor()
+            self.y_cor = self.tu.ycor()
         SlTrace.lg(f"draw_preacion: x_cor={self.x_cor} y_cor={self.y_cor}", "draw_action")
         self.set_color()
         self.set_marker()
@@ -744,7 +774,8 @@ class KeyboardDraw(SelectWindow):
         if move_type is not None:
             move_id_str = f"({move_type})"
         if SlTrace.trace(flag):
-            tu_undo_count = self.tu.undobufferentries()
+            if not self.use_command:
+                tu_undo_count = self.tu.undobufferentries()
             
             SlTrace.lg(f"{prefix} {key} {move_id_str}"
                        f"   tags: {move.canvas_tags}"
@@ -806,6 +837,10 @@ class KeyboardDraw(SelectWindow):
     def do_image(self, image_info=None, move_to_next=True, key=None):
         """ Do image marker
         """
+        if self.use_command:
+            self.cmd_do_command(image_info=image_info, key=key)
+            return
+        
         self.set_move(move_type=MoveInfo.MT_MARKER, key=key)
         if self.tu.isdown():
             self.do_image_display(image_info=image_info)
@@ -997,12 +1032,20 @@ class KeyboardDraw(SelectWindow):
         """ Do backward operation
         :side: distance
         """
+        if self.use_command:
+            self.cmd_do_backward(side=side, move_type=move_type)
+            return
+        
         if side is None:
             side = self.side
         self.set_move(move_type=move_type)
         self.tu.backward(side)
         
     def do_forward(self, side=None, move_type=MoveInfo.MT_POSITION):
+        if self.use_command:
+            self.cmd_do_forward(side=side, move_type=move_type)
+            return
+        
         if side is None:
             side = self.side
         self.set_move(move_type=move_type)
@@ -1012,6 +1055,10 @@ class KeyboardDraw(SelectWindow):
     def clear_all(self):
         """ Clear screen
         """
+        if self.use_command:
+            self.cmd_clear_all()
+            return 
+        
         self.move_undo = None   # Most recently undone
         self.move_stack = []    # Stack moves in draw_preaction()
         self.set_image_type(KeyboardDraw.IT_FILE)
@@ -1165,7 +1212,7 @@ class KeyboardDraw(SelectWindow):
         if choose:
             while True:
                 try:
-                    inp = self.tu.textinput("Line Size",f"Enter line length[{self.side}]")
+                    inp = input(f"Enter line length[{self.side}]")
                     if inp is None or inp == "":                    
                         inp = str(self.side)
                     self.side = int(inp)
@@ -1175,8 +1222,7 @@ class KeyboardDraw(SelectWindow):
                 
             while True:
                 try:
-                    inp = self.tu.textinput("Line Size",
-                                     f"Enter line width[{self.current_width}]")
+                    inp = input(f"Enter line width[{self.current_width}]")
                     if inp is None or inp == "":                    
                         inp = str(self.current_width)
                     self.current_width = int(inp)
@@ -1207,12 +1253,12 @@ class KeyboardDraw(SelectWindow):
             int or str -> converted to int
         :choose: prompt user for location default: don't ask
         """
-        x_cor = self.tu.xcor()
-        y_cor = self.tu.ycor()
+        x_cor = self.x_cor
+        y_cor = self.y_cor
         if choose:
             while True:
                 try:
-                    inp = self.tu.textinput("X",f"Enter x position[{x_cor:.0f}]")
+                    inp = input(f"Enter x position[{x_cor:.0f}]")
                     if inp is None or inp == "":                    
                         inp = str(int(x_cor))
                     x_new = int(inp)
@@ -1222,7 +1268,7 @@ class KeyboardDraw(SelectWindow):
                 
             while True:
                 try:
-                    inp = self.tu.textinput("Y", f"Enter y position[{y_cor:.0f}]")
+                    inp = input(f"Enter y position[{y_cor:.0f}]")
                     if inp is None or inp == "":                    
                          inp = str(int(y_cor))
                     y_new = int(inp)
@@ -1231,7 +1277,8 @@ class KeyboardDraw(SelectWindow):
                 except:
                     print(f"{inp} not a legal number - please try again")
             self.trace(f"Position x:{x_new} y: {y_new}")
-            self.tu.listen()        # textinput does its own keybd capture
+            if not self.use_command():
+                self.tu.listen()        # textinput does its own keybd capture
         else:
             if x is None or (type(x) == str and x == ""):
                 x_new = x_cor
@@ -1245,12 +1292,18 @@ class KeyboardDraw(SelectWindow):
         self.trace(f"Position x:{x_new} y: {y_new}")
         self.trace(f"End of move_set key")
 
-    def move_to(self, x,  y, is_move=False):
+    def move_to(self, x,  y, is_move=False, pen_down=None):
         """ Move to position
         :x: new x position
         :y: new y position
         :is_move: True - this is a move and undoable
+        :pen_down: True = pen down, False = pen up
+                default: use current pen orientation
         """
+        if self.use_command:
+            self.cmd_move_to(x,y, is_move=is_move, pen_down=pen_down)
+            return
+        
         if is_move:
             self.no_move_backup = True
             self.set_move(move_type=MoveInfo.MT_POSITION)       # Buffer against loosing move
@@ -1270,16 +1323,19 @@ class KeyboardDraw(SelectWindow):
         :pendown: target pen state
                 default: current  drawing state
         """
+        if self.use_command:
+            self.cmd_set_pen_state(pendwn=pendwn)
+            return 
+        
         pen_target = self.is_pendown
         if pendwn is not None:
             pen_target = pendwn
-            
-        if pen_target:
-            if not self.tu.isdown():
-                self.tu.pendown()
-        else:
-            if self.tu.isdown():
-                self.tu.penup()
+            if pen_target:
+                if not self.tu.isdown():
+                    self.tu.pendown()
+            else:
+                if self.tu.isdown():
+                    self.tu.penup()
         self.is_pendown = pen_target
                 
     def jump_to(self, heading=None, distance=0,
@@ -1291,6 +1347,11 @@ class KeyboardDraw(SelectWindow):
                     Leave pen in original state after
                     default: raise pen
         """
+        if self.use_command:
+            self.cmd_jump_to(heading=heading, distance=distance,
+                             pendwn=pendwn)
+            return 
+        
         if pendwn:
             if not self.tu.isdown():
                 self.tu.pendown()
@@ -1307,6 +1368,9 @@ class KeyboardDraw(SelectWindow):
     def jump_to_next(self):
         """ Move to next position, invisibly
         """
+        if self.use_command:
+            self.cmd_jump_to_next()
+            return
         
         if self.tu.isdown():
             self.tu.penup()
@@ -1322,9 +1386,9 @@ class KeyboardDraw(SelectWindow):
     def jump_to_next_line(self):
         """ Move to beginning of next line, invisibly
         """
-        
-        if self.tu.isdown():
-            self.tu.penup()
+        if not self.use_command:
+            if self.tu.isdown():
+                self.tu.penup()
         self.set_heading(self.heading)
         down_heading = self.heading - 90    # Down to next line
         theta = math.radians(down_heading)
@@ -1332,7 +1396,7 @@ class KeyboardDraw(SelectWindow):
         y_chg = self.side*math.sin(theta)
         new_x = self.text_line_begin_x + x_chg
         new_y = self.text_line_begin_y + y_chg
-        self.move_to(new_x, new_y)      # Beginning of next line 
+        self.move_to(new_x, new_y, pen_down=False)      # Beginning of next line 
         self.set_new_line()
         self.set_pen_state()
 
@@ -1428,7 +1492,7 @@ class KeyboardDraw(SelectWindow):
                 
     def shape_triangle(self):
         """ Display triangle
-        B          A
+        B
 
 
         A            C
@@ -1772,6 +1836,26 @@ class KeyboardDraw(SelectWindow):
         if move and move.move_type == MoveInfo.MT_MARKER:
             self.erase_move()
 
+    def cmd_get_loc(self):
+        """ Get current location
+        :returns: (x_cor, y_cor)
+        """
+        return (self.x_cor, self.y_cor)
+
+    def cmd_set_loc(self, locxy, locy=None):
+        """ Set current location
+        :locxy: (x,y) if tuple, else x
+        :locy: y if necessary
+        """
+        if isinstance(locxy, tuple):    
+            x,y = locxy
+        else:
+            x,y = locxy, locy
+        self.x_cor, self.y_cor = x,y 
+    
+    def cmd_set_heading(self, heading):
+        self.heading = heading
+                
     def get_move(self):
         """ Get most recent move (MoveInfo)
         :returns: move, None if none
@@ -1971,6 +2055,8 @@ class KeyboardDraw(SelectWindow):
         self.marker_scale(1/(1+self.enlarge_fraction))
             
     def marker_rotate(self):       # '/'
+        if self.use_command:
+            return self.cmd_marker_rotate()
         if not self.new_pendown:
             self.erase_if_marker()      # Erase current leg
             heading = self.heading + 45
@@ -2093,7 +2179,58 @@ class KeyboardDraw(SelectWindow):
             self.tu.undo()      # Remove previous side
         self.make_side(self.side*(1+self.enlarge_fraction))
         self.do_forward(self.side)
+
+    def insert_markers(self, markers):
+        """ Insert markers to display
+        Update location to final marker's next location 
+        :markers: list of markers(DrawMarker) to be removed
+        """
+        for marker in markers:
+            marker.draw()
+
+    def remove_markers(self, markers):
+        """ Remove markers from display 
+        :markers: list of markers(DrawMarker) to be removed
+        """
+        for marker in markers:
+            marker.undraw()
+
+    def display_print(self, tag, trace):
+        """ display current display status
+        :tag: text prefix
+        :trace: trace flags
+        """
+        
+    def display_update(self, cmd=None):
+        """ Update current display
+        """
+        if cmd is None:
+            cmd = self.cmd_get_last_command()
+        if cmd is None:
+            return          # Nothing to do
+        SlTrace.lg(f"display_update:{cmd}", "display_update")
+        self.remove_markers(cmd.prev_markers)
+        self.insert_markers(cmd.new_markers)
+        new_loc = cmd.new_loc
+        if new_loc is None:
+            cmd.set_new_loc()       # Default command new location
+        if cmd.new_loc is not None:
+            self.cmd_set_loc(cmd.new_loc)
+        if self.cmd_pointer is not None:
+            self.cmd_pointer.undraw()
+        heading = cmd.get_heading()
+        self.cmd_pointer = DmPointer(self, x_cor=cmd.new_loc[0],
+                                     y_cor=cmd.new_loc[1],
+                                     heading=heading)
+        self.cmd_set_heading(heading)
+        self.cmd_pointer.draw()
+        self.master.update()
     
+    def select_print(self, tag, trace=None):
+        """ Print select select state
+        """
+        """TBD"""
+                        
     def reduce_side(self):
         """ Reduce size back to before enlarge_size
         """
@@ -2474,10 +2611,46 @@ class KeyboardDraw(SelectWindow):
         y_coor = int(canvas_height/2 - y_cor)        # canvas increases downward
         return (x_coor, y_coor)
 
+    """ command based action methods
+    """
+    def cmd_marker_rotate(self):
+        prev_cmd = self.cmd_get_prev_command()
+        if prev_cmd is None:
+            return False 
+        new_command = self.cmd_start_command()
+        rotate = 45
+        prev_markers = prev_cmd.get_new_markers()
+        new_markers = []
+        for prev_marker in prev_markers:
+            new_command.add_prev_marker(prev_marker)
+            new_marker = prev_marker.rotate(rotate)
+            new_command.add_marker(new_marker)
+        self.complete_command(new_command)
+
+    def cmd_clear_all(self):
+        """ Clear screen
+        """
+        while not self.command_manager.command_stack.is_empty():
+            self.command_manager.undo()
+            
+    def cmd_get_last_command(self):
+        """ Get last command executed
+        Adjusted by undo
+        """
+        return self.command_manager.get_current_command()
+            
+    def cmd_get_prev_command(self):
+        """ Get previous command, if one
+        :returns copy of previous command
+        """
+        cmd = self.command_manager.get_prev_command()
+        return cmd
+            
 def main():
     """ Main Program """
     data_dir = "../data"
     trace = ""
+    use_command = False     # True use CommandManager, DrawCommand
     hello_str = None
     hello_file = "keyboard_draw_hello.txt"
     hello_file = "hello_family.txt"
@@ -2486,6 +2659,7 @@ def main():
     parser.add_argument('--data_dir', dest='data_dir', default=data_dir)
     parser.add_argument('--hello_str', dest='hello_str', default=hello_str)
     parser.add_argument('--hello_file', dest='hello_file', default=hello_file)
+    parser.add_argument('-c','--command', dest='use_command', action='store_true', default=use_command)
     
     args = parser.parse_args()             # or die "Illegal options"
     SlTrace.lg("args: %s\n" % args)
@@ -2493,6 +2667,7 @@ def main():
     hello_str = args.hello_str
     data_dir = args.data_dir
     trace = args.trace
+    use_command = args.use_command
     
     
     app = tk.Tk()   # initialize the tkinter app
@@ -2518,6 +2693,7 @@ def main():
                 draw_width=1500, draw_height=1000,
                 kbd_win_x=50, kbd_win_y=25,
                 kbd_win_width=600, kbd_win_height=300,
+                use_command=use_command
                            )
 
     kb_draw.enable_image_update()      # Enable key image update

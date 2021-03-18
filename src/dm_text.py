@@ -43,7 +43,8 @@ class DmText(DmImage):
         ###xy = (x0,y0)
         image = Image.new("RGB", (text_size, text_size), (255,255,255))
         draw = ImageDraw.Draw(image)      # Setup ImageDraw access
-        draw.text((0,0), self.text, anchor="mt", font=text_font, fill=text_color,
+        draw.text((0,0), self.text, anchor="mt",
+                  fill=text_color, font=text_font,
                   bg=text_bg)
         self.set_image_base(image)
         

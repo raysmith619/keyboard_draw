@@ -4,9 +4,9 @@ block_cipher = None
 
 
 a = Analysis(['cli.py'],
-             pathex=['../../resource_lib/src', 'c:\\Users\\raysm\\workspace\\python\\keyboard_draw_prj\\src'],
+             pathex=['../../resource_lib/src', 'C:\\Users\\raysm\\workspace\\python\\keyboard_draw_prj\\src'],
              binaries=[],
-             datas=[('keyboard_draw_hello.txt', '.'), ('../../resource_lib/images', './images')],
+             datas=[('keyboard_draw_hello.txt', '.'), ('hello_family.txt', '.'), ('../../resource_lib/images', './images')],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
