@@ -22,7 +22,9 @@ class DmPointer(DmMarker):
         """
         super().__init__(drawer, draw_type=super().DT_POINTER, **kwargs)
         if plen is None:
-            plen = 1
+            plen = self.line_width
+            if self.line_width > 2:
+                self.line_width = self.line_width/2
         self.plen = plen
         
     def __str__(self):
@@ -31,34 +33,32 @@ class DmPointer(DmMarker):
     def draw(self):
         """ Draw line
         """
-        x1,y1,x2,y2,kwargs = self.to_line_args(length=self.plen)
-        
-        self.create_line(x1,y1,x2,y2, arrow=LAST, **kwargs)
+        # Use square as basis, pointer bysects square
+        # from center of left vertical to center
+        corners = self.get_square(x1=self.x_cor, y1=self.y_cor,
+                     color=self.color, width=self.side)
+        x1 = (corners[0][0] + corners[3][0])/2
+        y1 = (corners[0][1] + corners[3][1])/2
+        x2 = (corners[0][0] + corners[1][0]
+               + corners[2][0] + corners[3][0])/4
+        y2 = (corners[0][1] + corners[1][1]
+               + corners[2][1] + corners[3][1])/4
+        _,_,_,_,k2args = self.to_line_args()
+        self.create_line(x1,y1,x2,y2, arrow=LAST, **k2args)
         
 
 if __name__ == "__main__":
     
-    from keyboard_draw import KeyboardDraw
+    from dm_drawer import DmDrawer
     
     root = Tk()
     
-    kb_draw = KeyboardDraw(root,  title=f"Testing {__file__}",
-                hello_drawing_str="",
-                draw_x=100, draw_y=50,
-                draw_width=1500, draw_height=1000,
-                kbd_win_x=50, kbd_win_y=25,
-                kbd_win_width=600, kbd_win_height=300,
-                show_help=False,        # No initial help
-                with_screen_kbd=False   # No screen keyboard
-                           )
-         
+    drawer = DmDrawer(root)
     nsquare = 8
     nsquare = 7
     colors = ["red", "orange", "yellow", "green", "blue", "indigo", "violet"]
     dms = []
     side = 100
-    image_info = kb_draw.pick_next_image()
-    image_file, image = image_info
     beg=0
     extent = side*nsquare
     x_beg = -extent/2
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         ang =  i*360/nsquare
         icolor = i % len(colors)
         color = colors[icolor]
-        dm = DmPointer(kb_draw, heading=ang, color=color,
+        dm = DmPointer(drawer, heading=ang, color=color,
                             x_cor=x_beg+i*side,
                             y_cor=y_beg+i*side,
                             )

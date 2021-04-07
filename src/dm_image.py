@@ -2,6 +2,7 @@
 """
 Square marker
 """
+import os
 from tkinter import *
 from PIL import ImageTk, Image
 from PIL import ImageDraw, ImageFont
@@ -66,26 +67,27 @@ class DmImage(DmMarker):
         self.marker_image_width = self.side*2   # allow rotation
         self.marker_image_width = self.side     # Workaround untill...
         self.marker_image_height = self.marker_image_width
-        image = image.resize((int(self.marker_image_width), int(self.marker_image_height)),
-                             Image.ANTIALIAS)
+        try:
+            image = image.resize((int(self.marker_image_width),
+                         int(self.marker_image_height)),
+                        Image.ANTIALIAS)
+        except:
+            SlTrace.lg(f"Can't resize Image({image_key}):"
+                       f"\n  {self.marker_image_width}x{self.marker_image_height}")
+            return 
+        SlTrace.lg(f"rotate image: {self.file}", "image")    
         if self.marker_type != "letter":
             image = image.rotate(rotation)
-        photo_image = ImageTk.PhotoImage(image)
+
+        SlTrace.lg(f"PhotoImage: {self.file}", "image")    
+        try:
+            photo_image = ImageTk.PhotoImage(image=image)
+        except:
+            SlTrace.lg(f"Can't make PhotoImage({image_key}):"
+                       f"\n  {self.marker_image_width}x{self.marker_image_height}")
+            return 
+        
         self.add_image_ref(photo_image)     # Save resource or may lose it
-        #canvas_x, canvas_y = self.x_cor, self.y_cor
-        #canvas_x, canvas_y = self.x_cor, self.y_cor
-        #canvas_x, canvas_y = 0,0
-        #test_tag = self.tu_canvas.create_line(0,0,300,300)
-        #test_tag2 = self.tu_canvas.create_line(0,0,100,200)
-        #test_tag3 = self.tu_canvas.create_line(0,0,-100,-200)
-        '''
-        canvas_width = canvas.winfo_width()
-        canvas_height = canvas.winfo_height()
-        adj_x = -canvas_width/2     #HACK
-        adj_y = -canvas_height/2
-        canvas_x += adj_x
-        canvas_y += adj_y
-        '''
         self.create_image(
             self.x_cor, self.y_cor,
             image=photo_image)
@@ -96,28 +98,19 @@ class DmImage(DmMarker):
         self.image_base = image
         
 if __name__ == "__main__":
-    from keyboard_draw import KeyboardDraw
+    from dm_drawer_image import DmDrawerImage
     
     root = Tk()
     
-    kb_draw = KeyboardDraw(root,  title="Testing DmImage",
-                hello_drawing_str="",
-                draw_x=100, draw_y=50,
-                draw_width=1500, draw_height=1000,
-                kbd_win_x=50, kbd_win_y=25,
-                kbd_win_width=600, kbd_win_height=300,
-                show_help=False,        # No initial help
-                with_screen_kbd=False   # No screen keyboard
-                           )
+    drawer = DmDrawerImage(root)
          
     nsquare = 8
     nsquare = 7
     colors = ["red", "orange", "yellow", "green", "blue", "indigo", "violet"]
     dms = []
     
-    image_info = kb_draw.pick_next_image()
-    image_file, image = image_info
-    dm_base = DmImage(kb_draw, file=image_file, image_base=image,
+    image = drawer.get_next_image()
+    dm_base = DmImage(drawer, image_base=image,
                       x_cor=-100, y_cor=100)
     beg=0
     extent = dm_base.side*nsquare

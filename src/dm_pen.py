@@ -1,4 +1,4 @@
-# dm_move.py    10Mar2021  crs  drawing objects
+# dm_pen.py    18Mar2021  crs  drawing objects
 """
 General move
 """
@@ -6,24 +6,25 @@ from tkinter import *
 
 from select_trace import SlTrace
 
-from dm_marker import DmMarker, tp
+from dm_marker import DmMarker
 
-""" Support for line marker
+""" Support for pen set/change
 """
-class DmMove(DmMarker):    
-    def __init__(self, drawer, draw_type=DmMarker.DT_MOVE, **kwargs
+class DmPen(DmMarker):
+        
+    def __init__(self, drawer, draw_type=DmMarker.DT_PEN,
+                 pen_desc="down", **kwargs
                   ):
-        """ Setup basic marker state
+        """ Setup basic state
         :drawer: drawing control
         :kwargs: basic DmMarker args
         """
         super().__init__(drawer, draw_type=draw_type, **kwargs)
+        self.pen_desc = pen_desc
 
     def __str__(self):
         str_str = self.__class__.__name__
-        str_str += f" heading={self.heading:.1f}"
-        str_str += f" x={self.x_cor:.0f} y={self.y_cor:.0f}"
-        str_str += f" to={tp(self.get_next_loc())}"
+        str_str += f"_{self.pen_desc}" 
         return str_str
 
     def is_visible(self):
@@ -33,15 +34,10 @@ class DmMove(DmMarker):
         """
         return False 
 
-    def get_side(self):
-        """ Always give default, don't change it
-        """
-        return self.drawer.get_side()
-    
     def draw(self):
-        """ Draw line
+        """ Set color
         """
-        self.add_move()
+        self.drawer.set_pen(self.pen_desc)
 
 if __name__ == "__main__":
     root = Tk()

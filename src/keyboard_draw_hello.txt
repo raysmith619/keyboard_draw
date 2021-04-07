@@ -4,7 +4,7 @@
             moveto(-650,400)
             plus
             image_file(family,alex);q
-            image_file(family,decklan);q
+            image_file(family,declan);q
             image_file(family,avery);q
             image_file(family,charlie);q
             image_file(family,willow);q

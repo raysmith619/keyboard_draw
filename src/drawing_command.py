@@ -5,13 +5,16 @@ Basic drawing command morphed from ExtendedModeler: EMBCommand
  * @author raysm
  *
 """
+import math
+
 from select_trace import SlTrace
 from select_error import SelectError
 from dm_marker import tp
+from pip._internal import self_outdated_check
         
 class DrawingCommand:
     """
-    static EMBCommandManager self.command_manager
+    static EMBCommandManager command_manager
     String action                # Unique action name
     boolean can_undo            # Command can be undone
     MarkerSelect prev_select        # Previously selected
@@ -50,7 +53,7 @@ class DrawingCommand:
         self.new_markers = []
         self.prev_loc = self.drawing_controller.cmd_get_loc()
         self.new_loc = None     # New location (x,y)
-        self.prev_heading = self.drawing_controller.heading
+        self.prev_heading = self.drawing_controller.get_heading()
         self.heading = None # New heading
 
     def copy(self):
@@ -63,6 +66,26 @@ class DrawingCommand:
         new_obj.prev_loc = self.prev_loc
         new_obj.heading = self.heading 
         new_obj.prev_heading = self.heading
+        return new_obj
+
+    def reverse_copy(self):
+        """ Create copy which will reverse effect of command
+        Used to generate revsible changes
+        """
+
+        new_obj = self.copy()
+        new_obj.new_select = self.prev_select
+        new_obj.prev_select = self.new_select
+        
+        new_obj.new_markers = self.prev_markers
+        new_obj.prev_markers = self.new_markers
+        
+        new_obj.new_loc = self.prev_loc
+        new_obj.prev_loc = self.new_loc
+        
+        new_obj.heading = self.prev_heading 
+        new_obj.prev_heading = self.heading
+        
         return new_obj
 
     def no_drawn(self):
@@ -103,16 +126,15 @@ class DrawingCommand:
 
     
     
-    """
-     Remove the effects of the most recently done command
-     0. command was poped from command_stack
-     1. copy command
-     2. reverse change requests in command copy
-     3. execute command copy
-     4. if OK add command to undo_stack
-     5. if OK return True
-    """
     def undo(self):
+        """ Remove the effects of the most recently done command
+         0. command was poped from command_stack
+         1. copy command
+         2. reverse change requests in command copy
+         3. execute command copy
+         4. if OK add command to undo_stack
+         5. if OK return True
+        """
         try:
             cmd = self.copy()    # Create "disposable" copy of command
         except Exception as e:
@@ -165,36 +187,71 @@ class DrawingCommand:
         
         return False
     
-    def repeat(self):
-        """ repeat last command
-        default is to duplicate command and start at next
-        location after command's location with same heading
-        and other parameters the same
+    def get_repeat(self):
+        """ Get a copy which will "repeat" last command
+        This supports possible modification before
+        actual execution.
+        
+        The plan is to create duplicate marker(s)
+        in a location relocated by one length in the
+        current heading with the marker's other
+        parameters unchanged.
         """
-        self.update()
-        #self.command_manager.command_stack.push(self)
         new_cpy = self.copy()
-        chg_markers = []
-        heading = self.drawing_controller.heading
+        chg_markers = []    # Make copied markers
+                            # independent 
         for marker in new_cpy.new_markers:
             chg_marker = marker.change(move_it=True)
             chg_markers.append(chg_marker)
         new_cpy.new_markers = chg_markers
         new_cpy.set_new_loc()
         new_cmd = new_cpy
-        self.update()       # TFD
+        return new_cmd 
+    
+    def repeat(self):
+        """ repeat last command
+        The plan is to create duplicate marker(s)
+        in a location relocated by one length in the
+        current heading with the marker's other
+        parameters unchanged.
+        """
+        new_cmd = self.get_repeat()
         res = new_cmd.do_cmd()
-        self.update()       # TFD
         return res 
         
-    """
-     * Add block to display
-     * @param id
-     * @return
-    """
     def add_marker(self, marker):
+        """ Add block to display
+        :marker: to add
+        """
         self.new_markers.append(marker)
         return marker
+
+    def add_prev_marker(self, marker):
+        """ Add block to remove from display
+        :marker: to remove
+        """
+        self.prev_markers.append(marker)
+        return marker
+        
+    def add_markers(self, markers):
+        """ Add one or a list of markers
+        :markers: marker or list to add
+        """
+        if not isinstance(markers, list):
+            markers = [markers]     # list of one
+        for marker in markers:
+            self.add_marker(marker)
+        return markers
+        
+    def add_prev_markers(self, markers):
+        """ Add one or a list of markers to prev_markers
+        :markers: marker or list to add
+        """
+        if not isinstance(markers, list):
+            markers = [markers]     # list of one
+        for marker in markers:
+            self.add_prev_marker(marker)
+        return markers
 
     def get_heading(self):
         """ Get heading, if one
@@ -205,9 +262,26 @@ class DrawingCommand:
         
         markers = self.get_markers()
         if len(markers) > 0:
-            return markers[-1].heading
+            return markers[-1].heading%360
         
         return 0
+
+    def set_heading(self, heading):
+        """ Set heading
+            1. if self.heading then adjust this
+            2. else set heading of last marker
+        :heading: new heading in degrees
+        """
+        if self.heading is not None:
+            self.heading = heading
+            return
+        
+        markers = self.get_markers()
+        if len(markers) > 0:
+            markers[-1].heading = heading
+            return
+        
+        self.heading = heading      # No markers
     
     def get_markers(self):
         """ Get our markers
@@ -284,31 +358,100 @@ class DrawingCommand:
      * Do command, storing, if command can be undone or repeated, for redo,repeat
     """
     def do_cmd(self):
-        self.command_manager.select_print(f"do_cmd:{self.action})", "execute")
-        self.command_manager.display_print(f"do_cmd {self.action})", "execute")
-        self.command_manager.cmd_stack_print(f"do_cmd cmd_stack_print {self.action})", "execute")
         res = self.execute()
         if (res):
-                            # Disable cmd pushing if mouse pressed
-            ###if not self.command_manager.isMousePressed():
             if self.can_undo() or self.can_repeat():
-                SlTrace.lg("add to command_stack", "execute")
+                SlTrace.lg(f"do_cmd command_stack.push({self})",
+                           "execute")
                 self.command_manager.command_stack.push(self)
+                self.command_manager.cmd_stack_print(f"do_cmd({self.action}) AFTER", "execute")
             else:
                 SlTrace.lg(f"do_cmd({self.action}) can't undo/repeat", "execute")
-                
-            
-        
-        self.command_manager.cmd_stack_print(f"do_cmd: cmd_stack_print {self.action}) AFTER", "execute")
         return res
     
-    
-    
+    def add_pt(self, x1=None, y1=None, side=None,
+               heading=None):
+        """ Calculate x2,y2 from x1,y1,heading 
+        :returns: x2,y2
+        """
+        if x1 is None:
+            x1 = self.get_x_cor()
+        if y1 is None:
+            y1 = self.get_y_cor()
+        if side is None:
+            side = self.get_side()
+        if heading is None:
+            heading = self.get_heading()
+        theta = math.radians(heading)
+        x_chg = side*math.cos(theta)
+        y_chg = side*math.sin(theta)
+        x2 = x1 + x_chg
+        y2 = y1 + y_chg
+        return x2,y2
     
 
     """
-     * Utility functions to add data to command
+     Utility functions to get data from or add data to command
     """
+    def get_copy_move(self):
+        if hasattr(self, "copy_move") and self.copy_move is not None:
+            return self.copy_move
+         
+        if len(self.new_markers) > 0:
+            side = self.new_markers[-1].get_copy_move()
+            return side
+        
+        return self.drawing_controller.get_copy_move()
+    
+    def get_side(self):
+        if hasattr(self, "side") and self.side is not None:
+            return self.side
+         
+        if len(self.new_markers) > 0:
+            side = self.new_markers[-1].get_side()
+            return side
+        
+        return self.drawing_controller.get_side()
+
+    def get_loc(self):
+        return (self.get_x_cor(), self.get_y_cor())
+            
+    def get_x_cor(self):
+        if hasattr(self, "x_cor") and self.x_cor is not None:
+            return self.x_cor 
+         
+        if len(self.new_markers) > 0:
+            x_cor = self.new_markers[-1].get_x_cor()
+            return x_cor
+        
+        return self.drawing_controller.get_x_cor()
+        
+    def set_x_cor(self, new_val):
+        if hasattr(self, "x_cor") and self.x_cor is not None:
+            self.x_cor = new_val         
+        elif len(self.new_markers) > 0:
+            self.new_markers[-1].x_cor = new_val
+        else:
+            self.x_cor = new_val
+
+    def get_y_cor(self):
+        if hasattr(self, "y_cor") and self.y_cor is not None:
+            return self.y_cor 
+
+        if len(self.new_markers) > 0:
+            y_cor = self.new_markers[-1].get_y_cor()
+            return y_cor
+        
+        return self.drawing_controller.get_y_cor()
+        
+    def set_y_cor(self, new_val):
+        if hasattr(self, "y_cor") and self.y_cor is not None:
+            self.y_cor = new_val         
+        elif len(self.new_markers) > 0:
+            self.new_markers[-1].y_cor = new_val
+        else:
+            self.y_cor = new_val
+    
     def get_next_loc(self):
         """ get location of next command - last marker
         """
@@ -316,9 +459,10 @@ class DrawingCommand:
             return self.new_loc
         
         markers = self.get_markers()
-        loc = (-1,-1)
         if len(markers) > 0:
             loc = markers[-1].get_next_loc()
+        else:
+            loc = self.add_pt()            
         return loc
 
     def set_new_loc(self, loc=None):
@@ -333,12 +477,7 @@ class DrawingCommand:
         if loc is None:
             loc = (0,0)
         self.new_loc = loc
-        
-            
-    def add_prev_markers(self, markers):
-        for marker in markers:
-            self.add_prev_marker(marker)
-        
+                
     """
      * Get currently selected
     """
@@ -358,15 +497,7 @@ class DrawingCommand:
      * Save command for undo/redo...
     """
     def saveCmd(self):
-        self.command_manager.saveCmd(self)
-    
-
-
-    def add_markers(self, markers):
-        for marker in markers:
-            self.add_marker(marker)
-        
-    
+        self.command_manager.saveCmd(self)    
 
 
     def any_selected(self):
@@ -400,11 +531,17 @@ class DrawingCommand:
                 cmd_str += f"\n    {marker}"
         
         return cmd_str
-    
 
-    def add_prev_marker(self, marker):
-        self.prev_markers.append(marker)
-    
+    def is_visible(self):
+        """ Check if command is visible -
+        if any of markers is visible command is visible
+        """
+        if len(self.new_markers) > 0:
+            for marker in self.new_markers:
+                if marker.is_visible():
+                    return True 
+            
+        return False
 
     def check_point(self):
         self.command_manager.check_point()
@@ -414,7 +551,26 @@ class DrawingCommand:
             mostly for debugging to visualize current state
         """
         self.drawing_controller.update()
+
+    def use_locale(self, cmd):
+        """ create self copy, then change to locale values
+        used by last marker  In essence give new marker the locale
+        of marker (location, heading...) - shorthand for change()
+        :cmd: later adjustments by command e.g. heading
+                default: no adjustments
+        """
+        new_cmd = self.copy()
+        if len(new_cmd.new_markers)  == 0:
+            return new_cmd
         
+        if len(cmd.new_markers) == 0:
+            return new_cmd
+        
+        marker = new_cmd.new_markers[-1]
+        marker_new = cmd.new_markers[-1]
+        marker = marker.use_locale(marker=marker_new)
+        new_cmd.new_markers[-1] = marker
+        return new_cmd
         
 if __name__ == "__main__":
     from tkinter import *
@@ -433,7 +589,6 @@ if __name__ == "__main__":
     kb_draw = KeyboardDraw(root,  title="Testing CommandManager",
                 show_help=False,        # No initial help
                 with_screen_kbd=False,   # No screen keyboard
-                use_command=True        # Using command_manager...
                            )
     kb_draw.color_current = "w"
     
@@ -460,14 +615,14 @@ if __name__ == "__main__":
         """
         if (keysym == "Up" or keysym == "Down"
                or keysym == "Left" or keysym == "Right"):
-            prev_heading = kb_draw.heading
+            prev_heading = kb_draw.get_heading()
             marker = DmMoveKey(kb_draw, keysym=keysym)
             new_heading = marker.heading
             if new_heading != prev_heading:
                 marker = marker.change(side=0)
             cmd = DrawingCommand(f"cmd_{keysym}")
-            cmd.add_marker(marker)
-            SlTrace.lg(f"cmd={cmd}")
+            cmd.add_markers(marker)
+            SlTrace.lg(f"cmd={cmd}", "cmd_trace")
             cmd.do_cmd() 
         else:
             raise SelectError(f"Don't understand keysym:{keysym}")    
@@ -488,8 +643,8 @@ if __name__ == "__main__":
             x_cor = beg_x+i*marker.side
             y_cor = beg_y+i*marker.side 
             cmd = DrawingCommand(f"cmd_{marker}")
-            cmd.add_marker(marker.change(x_cor=x_cor, y_cor=y_cor))
-            SlTrace.lg(f"cmd={cmd}")
+            cmd.add_markers(marker.change(x_cor=x_cor, y_cor=y_cor))
+            SlTrace.lg(f"cmd={cmd}", "cmd_trace")
             cmd.do_cmd() 
     
     def on_key_press(event):
@@ -505,7 +660,7 @@ if __name__ == "__main__":
             marker = DmImage(kb_draw, file=image_file, image_base=image,
                       x_cor=x_cor, y_cor=y_cor)
             cmd = DrawingCommand(f"cmd_{marker}")
-            cmd.add_marker(marker)
+            cmd.add_markers(marker)
             SlTrace.lg(f"cmd={cmd}")
             cmd.do_cmd() 
         elif keysym == 'u':
@@ -515,13 +670,13 @@ if __name__ == "__main__":
         elif keysym == 's':
             marker = DmSquare(kb_draw)
             cmd = DrawingCommand(f"cmd_{marker}")
-            cmd.add_marker(marker.change(x_cor=x_cor, y_cor=y_cor))
+            cmd.add_markers(marker.change(x_cor=x_cor, y_cor=y_cor))
             SlTrace.lg(f"cmd={cmd}")
             cmd.do_cmd() 
         elif keysym == 't':
             marker = DmTriangle(kb_draw)
             cmd = DrawingCommand(f"cmd_{marker}")
-            cmd.add_marker(marker.change(x_cor=x_cor, y_cor=y_cor))
+            cmd.add_markers(marker.change(x_cor=x_cor, y_cor=y_cor))
             SlTrace.lg(f"cmd={cmd}")
             cmd.do_cmd() 
         elif keysym == "f":         # (fix)Setup scene
@@ -536,7 +691,7 @@ if __name__ == "__main__":
         else:
             SlTrace.lg("??")
     
-    kb_draw.cmd_set_loc(-400, 0)
+    kb_draw.set_loc(-400, 0)
         
     root.bind('<KeyPress>', on_key_press)
     root.mainloop()   

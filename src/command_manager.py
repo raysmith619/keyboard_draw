@@ -32,6 +32,7 @@ class CommandManager:
     """
      * Check if command stack is empty
     """
+    
     def is_empty(self):
         return self.command_stack.is_empty()
 
@@ -51,6 +52,18 @@ class CommandManager:
             return None
         
         return self.command_stack.peek()
+    
+    def last_visible_command(self):
+        """ Peek at last visible command
+        :returns: DrawingCommand
+        """
+        cs_size = self.command_stack.size()
+        for sidx in range(cs_size):
+            cmd = self.command_stack.element_at(sidx)
+            if cmd.is_visible():
+                return cmd
+            
+        return None
 
     
     def last_undo_command(self):
@@ -156,17 +169,35 @@ class CommandManager:
         cmd = self.undo_stack.pop()
         return cmd.redo()
 
-
-    """
-     * Re execute the most recently done command
-    """
-    def repeat(self):        
-        SlTrace.lg("repeat")
+    def get_repeat(self):
+        """ Get command copy which would, if executed,
+        "repeat" last command
+        :returns command which would repeat
+            or None if none 
+        """       
         if (not self.can_repeat()):
+            return None
+
+        cmd = self.last_visible_command()
+        if cmd is None:
+            return None
+        
+        cmd_last = self.last_command()
+        cmd = cmd.use_locale(cmd_last)  # Update for changes
+        
+        return cmd.get_repeat()
+
+
+    def repeat(self):        
+        """ Re execute the most recently done visible
+        command
+        """
+        SlTrace.lg("repeat", "execute")
+        cmd = self.get_repeat()
+        if cmd is None:
             SlTrace.lg("Can't repeat")
             return False
 
-        cmd = self.last_command()
         return cmd.repeat()
 
 
@@ -322,7 +353,7 @@ class CommandManager:
                 stack_str += "\n"
             stack_str +=     "   " + str(cmd)
 
-        SlTrace.lg(f"{tag} {self.command_stack.size()}\n"
+        SlTrace.lg(f"{tag} cmd Stack: {self.command_stack.size()}\n"
                    f" {stack_str}", trace)
 
     
@@ -330,11 +361,13 @@ class CommandManager:
     def select_print(self, tag, trace=None):
         """ Print select select state
         """
+
         self.drawing_controller.select_print(tag, trace=trace)
-    
+
 if __name__ == "__main__":
     from tkinter import *
     from keyboard_draw import KeyboardDraw
+    from kbd_cmd_proc import KbdCmdProc
     
     root = Tk()
     
@@ -347,8 +380,7 @@ if __name__ == "__main__":
                 show_help=False,        # No initial help
                 with_screen_kbd=False   # No screen keyboard
                            )
-    
     mgr = CommandManager(kb_draw)
     mgr.cmd_stack_print("cmd_stack_print")
     
-
+    root.mainloop()

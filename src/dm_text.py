@@ -32,7 +32,7 @@ class DmText(DmImage):
         :text:
         """
         self.text = text
-        text_size = self.side
+        text_size = int(self.side)
         font_size = 80
         text_font = ImageFont.truetype("arial.ttf", size=font_size)
         #text_font = ImageFont.truetype("courbd.ttf", size=text_size)
@@ -65,27 +65,17 @@ class DmText(DmImage):
         
         
 if __name__ == "__main__":
-    from keyboard_draw import KeyboardDraw
+    from dm_drawer_image import DmDrawerImage
     
     root = Tk()
     
-    kb_draw = KeyboardDraw(root,  title="Testing DmImage",
-                hello_drawing_str="",
-                draw_x=100, draw_y=50,
-                draw_width=1500, draw_height=1000,
-                kbd_win_x=50, kbd_win_y=25,
-                kbd_win_width=600, kbd_win_height=300,
-                show_help=False,        # No initial help
-                with_screen_kbd=False   # No screen keyboard
-                           )
+    drawer = DmDrawerImage(root)
          
     nsquare = 7
     colors = ["red", "orange", "yellow", "green", "blue", "indigo", "violet"]
     dms = []
     
-    image_info = kb_draw.pick_next_image()
-    image_file, image = image_info
-    dm_base = DmText(kb_draw, text="A",
+    dm_base = DmText(drawer, text="A",
                       x_cor=200, y_cor=300)
     beg=0
     extent = dm_base.side*nsquare

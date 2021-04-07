@@ -29,27 +29,11 @@ class DmLine(DmMarker):
         self.add_line()
 
 if __name__ == "__main__":
+    from dm_drawer import DmDrawer
+    
     root = Tk()
-    '''
-    root.geometry("500x300")
-    cf = Frame(root, width=500, height=300)
-    cf.pack()
-    cf.pack_propagate(0)
-    '''
-    canvas = Canvas(root, width=500, height=300)
-    canvas.pack()
-    class Drawer:
-        heading = 0
-        side = 100
-        width = 2
-        x_cor = 100
-        y_cor = 100
-        tu_canvas = canvas
-        
-        def next_color(self):
-            return "red"
-         
-    drawer = Drawer()
+    
+    drawer = DmDrawer(root)
     nline = 8
     colors = ["red", "orange", "yellow", "green", "blue", "indigo", "violet"]
     dmls = []

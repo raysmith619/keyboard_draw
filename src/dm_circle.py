@@ -27,24 +27,56 @@ class DmCircle(DmMarker):
         """
         super().draw()      # Ground work
         self.add_circle()
+    
+    def add_circle(self, x1=None, y1=None,
+                     length=None, heading=None,
+                     color=None, width=None,
+                     **kwargs):
+        """ Add circle turtle style
+        Note: create_oval does not support rotation.
+            TBD: Create circle as a polygon then rotate
+            points based on heading.
+            
+        :x1: x origin coordinate default: self.x_cor
+        :y1: y origin coordinate default: self.y_cor
+        :length: length of line default: self.side (diameter)
+        :color: line color default: from kwargs['fill'], else self.color
+        :width: line width default: from kwargs['width'], else self.line_width
+        :heading: heading in deg default: self.heading (of bounding box)
+        :kwargs: additional parameters
+                defaults: color - self.color, else black
+                        width - self.line_width, else 1
+        """
+        corners = self.get_square(x1=x1, y1=y1,
+                     length=length, heading=heading)
+        ptxy = []
+        for x,y in corners:
+            ptxy.extend([x,y])
+        ###self.create_polygon(*ptxy, width=1, fill="", outline="red")    # TFD - bounding box 
+        sq_x0, sq_y0 = corners[3]
+        sq_x1, sq_y1 = corners[1]
+        cx, cy = (sq_x0+sq_x1)/2, (sq_y0+sq_y1)/2
+        radius = self.side/2
+        ov_x0 = cx-radius
+        ov_y0 = cy+radius
+        ov_x1 = cx+radius
+        ov_y1 = cy-radius
+        self.args_to_kwargs(color=color, width=width, dkwargs=kwargs)
+        kwargs["fill"] = ""     # Over ride inside
+        if "outline" not in kwargs:
+            kwargs["outline"] = self.color
+        self.create_oval(ov_x0, ov_y0, ov_x1, ov_y1, **kwargs)
+        SlTrace.lg(f"create_oval: {ov_x0:.0f}, {ov_y0:.0f},"
+                   f" {ov_x1:.0f}, {ov_y1:.0f}, {kwargs}", "draw_action")
 
 if __name__ == "__main__":
+    from dm_drawer import DmDrawer
+    
     root = Tk()
     
-    canvas = Canvas(root, width=1000, height=1000)
-    canvas.pack()
-    class Drawer:
-        heading = 0
-        side = 100
-        width = 2
-        x_cor = 50
-        y_cor = 500
-        tu_canvas = canvas
-        
-        def next_color(self):
-            return "red"
-         
-    drawer = Drawer()
+    drawer = DmDrawer(root)
+    drawer.color_current = "w"
+    
     ncircle = 8
     ncircle = 7
     colors = ["red", "orange", "yellow", "green", "blue", "indigo", "violet"]

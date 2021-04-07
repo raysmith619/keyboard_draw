@@ -17,7 +17,7 @@ class DmSquare(DmMarker):
         :drawer: drawing control
         :kwargs: basic DmMarker args
         """
-        super().__init__(drawer, draw_type=super().DT_CIRCLE, **kwargs)
+        super().__init__(drawer, draw_type=super().DT_SQUARE, **kwargs)
 
     def __str__(self):
         return super().__str__()
@@ -29,22 +29,11 @@ class DmSquare(DmMarker):
         self.add_square()
 
 if __name__ == "__main__":
+    from dm_drawer import DmDrawer
+    
     root = Tk()
     
-    canvas = Canvas(root, width=1000, height=1000)
-    canvas.pack()
-    class Drawer:
-        heading = 0
-        side = 100
-        width = 2
-        x_cor = 50
-        y_cor = 50
-        tu_canvas = canvas
-        
-        def next_color(self):
-            return "red"
-         
-    drawer = Drawer()
+    drawer = DmDrawer(root)
     nsquare = 8
     nsquare = 7
     colors = ["red", "orange", "yellow", "green", "blue", "indigo", "violet"]

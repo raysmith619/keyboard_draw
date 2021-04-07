@@ -29,28 +29,18 @@ class DmTriangle(DmMarker):
         self.add_triangle()
 
 if __name__ == "__main__":
-    from tkinter import *
-    
-    from keyboard_draw import KeyboardDraw
+    from dm_drawer import DmDrawer
     
     root = Tk()
     
-    kb_draw = KeyboardDraw(root,  title=f"Testing {__file__}",
-                hello_drawing_str="",
-                draw_x=100, draw_y=50,
-                draw_width=1500, draw_height=1000,
-                kbd_win_x=50, kbd_win_y=25,
-                kbd_win_width=600, kbd_win_height=300,
-                show_help=False,        # No initial help
-                with_screen_kbd=False   # No screen keyboard
-                           )
+    drawer = DmDrawer(root)
          
     ntriangle = 8
     ntriangle = 7
     colors = ["red", "orange", "yellow", "green", "blue", "indigo", "violet"]
     dms = []
     
-    dm_base = DmTriangle(kb_draw)
+    dm_base = DmTriangle(drawer)
     beg=0
     for i in range(beg, beg+ntriangle):
         ang =  i*360/ntriangle
