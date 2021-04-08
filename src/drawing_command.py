@@ -560,6 +560,9 @@ class DrawingCommand:
                 default: no adjustments
         """
         new_cmd = self.copy()
+        if cmd is None:
+            return new_cmd
+        
         if len(new_cmd.new_markers)  == 0:
             return new_cmd
         

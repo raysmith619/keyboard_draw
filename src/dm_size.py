@@ -28,7 +28,6 @@ class DmSize(DmMarker):
     def is_visible(self):
         """ Return True if this is a "visible" marker
         suitable for duplicating/repeating
-        OVERRIDDEN if not a visible marker
         """
         return False 
 

@@ -27,6 +27,13 @@ class DmHeading(DmMarker):
         """ Get next location  - unchanged
         """
         return self.get_loc()
+
+    def is_visible(self):
+        """ Return True if this is a "visible" marker
+        suitable for duplicating/repeating
+        """
+        return False
+     
     def draw(self):
         """ Draw line
         """

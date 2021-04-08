@@ -710,8 +710,7 @@ class KbdCmdProc:
         if keysym == 'slash':
             heading_chg = 45
         
-            cmd_last = self.last_marker_command()
-            marker_last = self.last_marker()
+            marker_last = self.last_visible_marker()
             if marker_last is None:
                 new_heading = self.get_heading() + heading_chg
                 marker = DmHeading(self, heading=new_heading)
@@ -757,22 +756,22 @@ class KbdCmdProc:
         :shape_type: "line", "square", ...
         """
         cmd_last = self.last_command()
+        mv_last = self.last_visible_marker()
         new_color = self.get_next("color")
-        if cmd_last is None:
+        if mv_last is None:
             cmd = DrawingCommand(f"cmd_{shape_type}")
             marker = self.make_shape(shape=shape_type)
             marker = marker.change(color=new_color)
             cmd.add_markers(marker)
         else:
-            marker_last = self.last_command_marker()
             cmd = DrawingCommand(f"cmd_{shape_type}")
             marker = self.make_shape(shape=shape_type)
-            if marker_last is not None:
-                if marker_last.is_visible():
-                    self.cmd_undo() # Change in-place
-                marker = marker.use_locale(marker_last)
+            self.cmd_undo() # Change in-place
+            marker = marker.use_locale(mv_last)
             marker = marker.change(color=new_color)
             cmd.add_markers(marker)
+        cmd = cmd.use_locale(cmd_last)  # Update for changes
+
         return cmd.do_cmd()
 
     def cmd_shapes(self, keysym):
@@ -963,8 +962,7 @@ class KbdCmdProc:
         else:
             new_heading = dig2head[keysym]        
 
-        cmd_last = self.last_marker_command()
-        marker_last = self.last_marker()
+        marker_last = self.last_visible_marker()
         cmd = DrawingCommand(f"cmd_{keysym}")
         if marker_last is None:
             new_color = self.get_next("color")
@@ -1235,6 +1233,31 @@ class KbdCmdProc:
                         SlTrace.lg(f"last_marker_command: {cmd}")
                     return cmd
                 SlTrace.lg(f"last_marker_command not visible {cmd}")
+        return None 
+
+    def last_visible_command(self):
+        """ get most recently "visible" command
+        shape, image, etc. visible which makes sense to 
+        repeat on the screen
+        :returns: command or None if none
+        """
+        cmd = self.command_manager.last_visible_command()
+        return cmd 
+
+    def last_visible_marker(self):
+        """ get most recently "visible" command marker
+        shape, image, etc. visible which makes sense to 
+        repeat on the screen
+        :returns: command or None if none
+        """
+        cmd = self.last_visible_command()
+        if cmd is None:
+            return None 
+        
+        for marker in reversed(cmd.new_markers):
+            if marker.is_visible():
+                return marker
+            
         return None 
 
     def undo_last_marker_command(self):

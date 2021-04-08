@@ -136,19 +136,26 @@ class DmMarker:
 
     def use_locale(self, marker, cmd=None):
         """ create self copy, then change to locale values
-        used by marker  In essence give new marker the locale
+        that is adopt any non-None values from
+        marker  In essence give new marker the locale
         of marker (location, heading...) - shorthand for change()
         :marker: pattern command
         :cmd: later adjustments by command e.g. heading
                 default: no adjustments
         """
         new_obj = self.copy()
-        new_obj.heading = marker.heading
-        new_obj.side = marker.side
-        new_obj.line_width = marker.line_width
-        new_obj.color = marker.color
-        new_obj.x_cor = marker.x_cor
-        new_obj.y_cor = marker.y_cor
+        if marker.heading is not None:
+            new_obj.heading = marker.heading
+        if marker.side is not None:
+            new_obj.side = marker.side
+        if marker.line_width is not None:
+            new_obj.line_width = marker.line_width
+        if marker.color is not None:
+            new_obj.color = marker.color
+        if marker.x_cor is not None:
+            new_obj.x_cor = marker.x_cor
+        if marker.y_cor is not None:
+            new_obj.y_cor = marker.y_cor
         if cmd is not None:
             new_obj.heading = cmd.get_heading() # Use latest
         return new_obj
@@ -253,7 +260,9 @@ class DmMarker:
         :dkwargs: returnable dictionary of kwargs
                     Adjusted if applicable
         """
-                
+        if color is None:
+            color = self.color
+                    
         if color is not None:
             if 'fill' in dkwargs:
                 raise SelectError(f"Can't have color: {color}"
@@ -261,6 +270,8 @@ class DmMarker:
             dkwargs['fill'] = color
         else:
             dkwargs['fill'] = self.color
+        if width is None:
+            width = self.line_width
         if width is not None:
             if 'width' in dkwargs:
                 raise SelectError(f"Can't have width: {color}"
