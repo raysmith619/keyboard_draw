@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   sodipodi:docname="marker_hierarchy_2.svg"
+   inkscape:version="1.0 (4035a4fb49, 2020-05-01)"
+   id="svg1271"
+   version="1.1"
+   viewBox="0 0 210 297"
+   height="297mm"
+   width="210mm">
+  <defs
+     id="defs1265">
+    <rect
+       id="rect1318"
+       height="17.10525"
+       width="63.075608"
+       y="78.042702"
+       x="29.934187" />
+    <rect
+       id="rect1312"
+       height="58.799296"
+       width="6.4144687"
+       y="96.21703"
+       x="75.904546" />
+    <rect
+       id="rect1285"
+       height="59.177989"
+       width="43.226244"
+       y="68.035714"
+       x="24.946429" />
+    <rect
+       id="rect1275"
+       height="23.714426"
+       width="85.979509"
+       y="25.702381"
+       x="40.821429" />
+  </defs>
+  <sodipodi:namedview
+     inkscape:window-maximized="0"
+     inkscape:window-y="165"
+     inkscape:window-x="-273"
+     inkscape:window-height="1024"
+     inkscape:window-width="1722"
+     showgrid="false"
+     inkscape:document-rotation="0"
+     inkscape:current-layer="layer1"
+     inkscape:document-units="mm"
+     inkscape:cy="560"
+     inkscape:cx="-131.34024"
+     inkscape:zoom="0.24748737"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     borderopacity="1.0"
+     bordercolor="#666666"
+     pagecolor="#ffffff"
+     id="base" />
+  <metadata
+     id="metadata1268">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     id="layer1"
+     inkscape:groupmode="layer"
+     inkscape:label="Layer 1">
+    <text
+       transform="matrix(2.9130384,0,0,6.1496174,-136.58645,-157.14786)"
+       style="font-size:7.05556px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';text-align:center;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;white-space:pre;shape-inside:url(#rect1275)"
+       id="text1273"
+       xml:space="preserve"><tspan
+         x="59.055051"
+         y="32.140126"><tspan>DmMarker - 2</tspan></tspan></text>
+    <text
+       id="text1281"
+       y="33.261906"
+       x="121.70833"
+       style="font-size:7.05556px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';text-align:center;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:middle;stroke-width:0.264583"
+       xml:space="preserve"><tspan
+         style="stroke-width:0.264583"
+         y="33.261906"
+         x="121.70833"
+         id="tspan1279"
+         sodipodi:role="line" /></text>
+    <text
+       transform="matrix(4.7802745,0.06442091,0.17900944,3.1427242,-135.29649,-168.24094)"
+       style="font-size:7.05556px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';text-align:center;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;white-space:pre;shape-inside:url(#rect1285)"
+       id="text1283"
+       xml:space="preserve"><tspan
+         x="42.714841"
+         y="74.472158"><tspan>...
+</tspan></tspan><tspan
+         x="31.153093"
+         y="83.291608"><tspan>DmMove
+</tspan></tspan><tspan
+         x="27.461387"
+         y="92.111058"><tspan
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.14599px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">DmMoveKey</tspan><tspan>
+</tspan></tspan></text>
+    <text
+       style="font-family:sans-serif;font-size:7.05555556px;line-height:1.25;letter-spacing:0px;word-spacing:0px;-inkscape-font-specification:'sans-serif, Normal';writing-mode:lr;text-align:center;white-space:pre;shape-inside:url(#rect1312)"
+       id="text1310"
+       xml:space="preserve" />
+    <text
+       style="font-family:sans-serif;font-size:7.05555556px;line-height:1.25;letter-spacing:0px;word-spacing:0px;-inkscape-font-specification:'sans-serif, Normal';writing-mode:lr;text-align:center;white-space:pre;shape-inside:url(#rect1318)"
+       id="text1316"
+       xml:space="preserve" />
+    <text
+       transform="scale(1.2742742,0.78476046)"
+       id="text1695"
+       y="178.16385"
+       x="85.498444"
+       style="font-size:26.4334px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';text-align:center;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:middle;stroke-width:0.991253"
+       xml:space="preserve"><tspan
+         style="stroke-width:0.991253"
+         y="178.16385"
+         x="85.498444"
+         id="tspan1693"
+         sodipodi:role="line" /><tspan
+         id="tspan1707"
+         style="stroke-width:0.991253"
+         y="211.20561"
+         x="85.498444"
+         sodipodi:role="line">...</tspan><tspan
+         id="tspan1697"
+         style="stroke-width:0.991253"
+         y="244.24738"
+         x="85.498444"
+         sodipodi:role="line">Dmheading</tspan><tspan
+         id="tspan1699"
+         style="stroke-width:0.991253"
+         y="277.28912"
+         x="85.498444"
+         sodipodi:role="line">DmSize</tspan><tspan
+         id="tspan1703"
+         style="stroke-width:0.991253"
+         y="310.3309"
+         x="85.498444"
+         sodipodi:role="line">...</tspan><tspan
+         id="tspan1705"
+         style="stroke-width:0.991253"
+         y="343.37265"
+         x="85.498444"
+         sodipodi:role="line">DmPointer</tspan></text>
+  </g>
+</svg>
