@@ -56,7 +56,7 @@ class DmCircle(DmMarker):
         sq_x0, sq_y0 = corners[3]
         sq_x1, sq_y1 = corners[1]
         cx, cy = (sq_x0+sq_x1)/2, (sq_y0+sq_y1)/2
-        radius = self.side/2
+        radius = self.side_h/2
         ov_x0 = cx-radius
         ov_y0 = cy+radius
         ov_x1 = cx+radius

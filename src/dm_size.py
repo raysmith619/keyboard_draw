@@ -32,10 +32,10 @@ class DmSize(DmMarker):
         return False 
 
     def draw(self):
-        """ Set color
-        """
+        """ TBD
         self.drawer.set_size(side=self.side,
                                  line_width=self.line_width)
+        """
 
 if __name__ == "__main__":
     root = Tk()

@@ -5,7 +5,6 @@ Start generalizing as we might have done before_move
 from tkinter import *
 import copy
 import math
-import tkinter as tk
 
 from select_trace import SlTrace
 from select_error import SelectError
@@ -52,10 +51,27 @@ class DmMarker:
     DT_PEN = "dt_pen"
     DT_POINTER = "dt_pointer"   # turtle pointer
     DT_POSITION = "dt_position"
+    dm_id = 0           # Unique marker id
+    recorded = {}       # Hash of recorded dm_
+    drawn_t = {}        # Hash of currently drawn tags
 
+    @classmethod
+    def copy_markers(cls, markers):
+        """ Copy list of markers such that subsequent
+        marker changes will not change copies
+        :list of zero or more markers
+        """
+        new_markers = []
+        for marker in markers:
+            new_marker = marker.copy()
+            new_markers.append(new_marker)
+        return new_markers
+            
     def __init__(self, drawer, draw_type=None,
                  copy_move="copy",
-                 heading=None, side=None, line_width=None,
+                 heading=None,
+                 side_h=None, side_v=None,
+                 line_width=None,
                  color=None,
                  x_cor=None,  y_cor=None
                   ):
@@ -70,16 +86,20 @@ class DmMarker:
                     
                     default: "copy" replicate marker at destination
         :heading: marker direction default: drawer.heading
-        :side: marker side size default: drawer.side
-        :line_width: marker's line width defalt:drawer.side
+        :side_h: marker horizontal side size default: drawer.side_h
+        :side_v: marker vertical side size default: side_h
+        :line_width: marker's line width defalt:drawer.side_h
         :color: marker's color default: drawer.
         :x_cor: marker's base x_coordinate default: drawer.x_cor
         :y_cor: marker's base y_coordinate default: drawer.y_cor
         """
+        DmMarker.dm_id += 1
+        self.dm_id = DmMarker.dm_id
         self.image_stores = []      # To avoid image loss by reclamation
         self.drawer = drawer
         if draw_type is None:
             raise SelectError("DmMarker: draw_type missing")
+        self.isdrawn = False
         self.draw_type = draw_type
         if copy_move is None:
             copy_move = drawer.get_copy_move()
@@ -87,11 +107,14 @@ class DmMarker:
         if heading is None:
             heading = drawer.get_heading()
         self.heading = heading
-        if side is None:
-            side = drawer.get_side()
-        self.side = side
+        if side_h is None:
+            side_h = drawer.get_side_h()
+        if side_v is None:
+            side_v = drawer.get_side_v()
+        self.side_h = side_h
+        self.side_v = side_v
         if line_width is None:
-            line_width = drawer.get_width()
+            line_width = drawer.get_line_width()
         self.line_width = line_width
         self.color = color
         if x_cor is None:
@@ -102,13 +125,18 @@ class DmMarker:
         self.y_cor = y_cor
         self.update_tur_scale()
         self.drawn = None       # drawn artifacts
+        SlTrace.lg(f"new {self}", "new_marker")
     
     def __str__(self):
         str_str = self.__class__.__name__
+        str_str += f" dm:{self.dm_id}"
         str_str += f" {self.copy_move}"
         str_str += f" {self.color}"
         str_str += f" heading={self.heading:.1f}"
-        str_str += f" side={self.side:.0f}"
+        if self.side_h != self.side_v:
+            str_str += f" side_h={self.side_h:.0f} side_v={self.side_v:.0f}"
+        else:
+            str_str += f" side={self.side_h:.0f}"
         str_str += f" line_width={self.line_width:.0f}"
         str_str += f" x={self.x_cor:.0f} y={self.y_cor:.0f}"
         return str_str
@@ -132,22 +160,58 @@ class DmMarker:
             except:
                 if k in new_obj.__dict__: 
                     new_obj.__dict__[k] = v     # Just pass ref
+        DmMarker.dm_id += 1                 # New object instance
+        new_obj.dm_id = DmMarker.dm_id
+        new_obj.isdrawn = False
+        SlTrace.lg(f"new copy:{new_obj}", "new_marker")
+        if hasattr(SlTrace, "new_copy_count"):
+            SlTrace.new_copy_count += 1
+            if SlTrace.new_copy_count > 1:
+                SlTrace.lg(f"new_copy_count:{SlTrace.new_copy_count}")
+
         return new_obj
 
-    def use_locale(self, marker, cmd=None):
+    def is_recorded(self):
+        """ Check if marker is recorded (ready to display)
+        """
+        if self.dm_id in DmMarker.recorded:
+            return True 
+        
+        return False 
+    
+    def record(self):
+        """ Record marker, for tracking
+        clear isdrawn flag
+        Only track markers that get placed in the picture
+        :returns: recorded marker
+        """
+        if self.is_recorded():
+            SlTrace.lg( f"re-recording marker:{DmMarker.recorded[self.dm_id]}"
+                       f"\n                as:{self}")
+        self.isdrawn = False        # State that we are  undrawn
+        DmMarker.recorded[self.dm_id] = self
+        return self 
+    
+    def use_locale(self, marker=None, cmd=None):
         """ create self copy, then change to locale values
         that is adopt any non-None values from
         marker  In essence give new marker the locale
         of marker (location, heading...) - shorthand for change()
-        :marker: pattern command
+        :marker: pattern marker
+                default: use cmd.new_markers[-1]
         :cmd: later adjustments by command e.g. heading
                 default: no adjustments
         """
         new_obj = self.copy()
+        if marker is None:
+            if cmd is None or len(cmd.new_markers) == 0:
+                return new_obj
+            
+            marker = cmd.new_markers[-1]
         if marker.heading is not None:
             new_obj.heading = marker.heading
-        if marker.side is not None:
-            new_obj.side = marker.side
+        if marker.side_h is not None:
+            new_obj.side_h = marker.side_h
         if marker.line_width is not None:
             new_obj.line_width = marker.line_width
         if marker.color is not None:
@@ -162,7 +226,8 @@ class DmMarker:
         
     def change(self, 
                move_it=False, move_by=None, heading_by=None,
-               heading=None, side=None, line_width=None,
+               heading=None, side_h=None, side_v=None,
+               line_width=None,
                color=None, x_cor=None,  y_cor=None):
         """ Return a changed version of this object with the 
         non-None parameters changed
@@ -176,8 +241,10 @@ class DmMarker:
         
         if heading is not None:
             new_obj.heading = heading
-        if side is not None:
-            new_obj.side = side
+        if side_h is not None:
+            new_obj.side_h = side_v
+        if side_v is not None:
+            new_obj.side_v = side_v
         if line_width is not None:
             new_obj.line_width = line_width
         if color is not None:
@@ -193,7 +260,7 @@ class DmMarker:
                 raise SelectError(f"Can't also include x_cor or y_cor")
             
             if move_by is None:
-                move_by = new_obj.side
+                move_by = new_obj.side_h
             if heading_by is None:
                 heading_by = new_obj.heading
             new_obj.x_cor, new_obj.y_cor = self.vadd(
@@ -211,10 +278,29 @@ class DmMarker:
     def get_next_loc(self):
         """ Get location for next marker, given
         current settings
-        :regurns (x_cor,y_cor) of next placed
+        :returns (x_cor,y_cor) of next placed
                 marker
         """
         return self.vadd()
+    
+    def get_center(self):
+        """ Get marker center
+        current settings
+        :returns (x_cor,y_cor) of next placed
+                marker
+        """
+        cs = self.get_square()
+        pc = (cs[0][0]+cs[2][0])/2, (cs[0][1]+cs[2][1])/2
+        return pc
+    
+    def get_next_center(self):
+        """ Get center for next marker, given
+        current settings
+        :returns (x_cor,y_cor) of next placed
+                marker
+        """
+        pc = self.get_center()
+        return self.vadd(x1=pc[0], y1=pc[1])
 
     def get_loc(self):
         """ Get our current location
@@ -227,11 +313,23 @@ class DmMarker:
     def get_y_cor(self):
         return self.y_cor
         
-    def get_side(self):
-        if self.side is not None:
-            return self.side
+    def get_side_h(self):
+        if self.side_h is not None:
+            return self.side_h
         
-        return self.drawer.get_side()
+        return self.drawer.get_side_h()
+        
+    def get_side_v(self):
+        if self.side_v is not None:
+            return self.side_v
+        
+        return self.drawer.get_side_v()
+
+    def get_line_width(self):
+        if self.line_width is not None:    
+            return self.line_width
+        
+        return self.drawer.get_line_width()
     
     def is_visible(self):
         """ Return True if this is a "visible" marker
@@ -287,7 +385,7 @@ class DmMarker:
         """ Calculate create_line args, based on origin, heading, side
         :x1: x origin coordinate default: self.x_cor
         :y1: y origin coordinate default: self.y_cor
-        :length: length of line default: self.side
+        :length: length of line default: self.side_h
         :color: line color default: from kwargs['fill'], else self.color
         :width: line width default: from kwargs['width'], else self.line_width
         :heading: heading in deg default: self.heading
@@ -305,7 +403,7 @@ class DmMarker:
             if y1 is None:
                 y1 = 0
         if length is None:
-            length = self.side
+            length = self.side_h
         self.length = length
         if heading is None:
             heading = self.heading
@@ -341,7 +439,7 @@ class DmMarker:
         """ Vector add to get x2,y2, uses to_Line_args
         :x1,y1: x,y origin coordinates    default: x_cor, y_cor
         :heading: heading default: self.heading
-        :length: distance default: self.side
+        :length: distance default: self.side_h
         :returns: x2,y2
         """
         _,_,x2,y2,_ = self.to_line_args(x1=x1, y1=y1,
@@ -357,7 +455,7 @@ class DmMarker:
         Line starts from middle of square going in heading direction
         :x1: x origin coordinate default: self.x_cor
         :y1: y origin coordinate default: self.y_cor
-        :length: length of line default: self.side
+        :length: length of line default: self.side_h
         :color: line color default: from kwargs['fill'], else self.color
         :width: line width default: from kwargs['width'], else self.line_width
         :heading: heading in deg default: self.heading
@@ -390,7 +488,7 @@ class DmMarker:
         
         :x1: x origin coordinate default: self.x_cor
         :y1: y origin coordinate default: self.y_cor
-        :length: length of line default: self.side
+        :length: length of line default: self.side_h
         :color: line color default: from kwargs['fill'], else self.color
         :width: line width default: from kwargs['width'], else self.line_width
         :heading: heading in deg default: self.heading
@@ -414,7 +512,7 @@ class DmMarker:
         """ Add triangle turtle style
         :x1: x origin coordinate default: self.x_cor
         :y1: y origin coordinate default: self.y_cor
-        :length: length of line default: self.side (diameter)
+        :length: length of line default: self.side_h (diameter)
         :color: line color default: from kwargs['fill'], else self.color
         :width: line width default: from kwargs['width'], else self.line_width
         :heading: heading in deg default: self.heading (of bounding box)
@@ -427,7 +525,7 @@ class DmMarker:
         if y1 is None:
             y1 = self.y_cor
         if length is None:
-            length = self.side
+            length = self.side_h
         if heading is None:
 
             heading = self.heading
@@ -453,14 +551,16 @@ class DmMarker:
         self.create_polygon(*ptxy, outline=outline, **kwargs) 
 
     def add_square(self, x1=None, y1=None,
-                     length=None, heading=None,
+                     side_h=None, side_v=None,
+                     heading=None,
                      color=None, width=None,
                      **kwargs):
         """ Add square turtle style
         Origin is lower left corner of square
         :x1: x origin coordinate default: self.x_cor
         :y1: y origin coordinate default: self.y_cor
-        :length: length of line default: self.side (diameter)
+        :side_h: horizontal side default: self.side_h
+        :side_v: vertical side default: self.side_v
         :color: line color default: from kwargs['fill'], else self.color
         :width: line width default: from kwargs['width'], else self.line_width
         :heading: heading in deg default: self.heading (of bounding box)
@@ -472,13 +572,23 @@ class DmMarker:
             x1 = self.x_cor
         if y1 is None:
             y1 = self.y_cor
-        if length is None:
-            length = self.side
+        if side_h is None:
+            side_h = self.side_h
+        if side_v is None:
+            side_v = self.side_v
+        if side_v is None:
+            side_v = side_h
+        if width is None:
+            if width in kwargs:
+                width = kwargs['width']
+        if width is None:
+            width = 2
         if heading is None:
             heading = self.heading
         
         corners = self.get_square(x1=x1, y1=y1,
-                     length=length, heading=heading,
+                     side_h=side_h, side_v=side_v,
+                     heading=heading,
                      color=color, width=width)
         ptxy = []
         for x,y in corners:
@@ -490,33 +600,62 @@ class DmMarker:
         self.create_polygon(*ptxy, outline=outline, **kwargs) 
 
 
-    def origin_rotated(self, x1, y1, rotation, side=None):
+    def origin_rotated(self, x1, y1, rotation,
+                        side_h=None, side_v=None):
         """ Get origin changed when square rotated
         :x1: origin x
         :y1: origin y
         :rotation: rotation, in degrees
-        :side: length of side default: self.side
+        :side_h: length of horizontal side default: self.side_h
+        :sied_v: length of vertical side default: side_h
         """
-        if side is None:
-            side = self.side
+        if side_h is None:
+            side_h = self.side_h
+        if side_v is None:
+            side_v = side_h
         theta = math.radians(rotation)
-        x2 = -side/2*math.cos(theta) + side/2*math.sin(theta) + side/2 + x1
-        y2 = -side/2*math.cos(theta)-side/2*math.sin(theta) + side/2 + y1
+        x2 = -side_h/2*math.cos(theta) + side_v/2*math.sin(theta) + side_h/2 + x1
+        y2 = -side_v/2*math.cos(theta)-side_h/2*math.sin(theta) + side_v/2 + y1
         return x2,y2
     
+    def get_center_head(self, x1=None, y1=None,
+                     length=None, heading=None):
+        """ Get center, given origin,length, heading
+        :x1: x origin coordinate default: self.x_cor
+        :y1: y origin coordinate default: self.y_cor
+        :length: length of line default: self.side_h (diameter)
+        :heading: heading in deg default: self.heading (of bounding box)
+        :returns: center_x, center_y
+        """
+        if x1 is None:
+            x1 = self.x_cor
+        if y1 is None:
+            y1 = self.y_cor
+        if length is None:
+            length = self.side_h
+        if heading is None:
+            heading = self.heading
+        cx,cy = self.vadd(x1, y1, heading=heading, length=length)
+        return (cx,cy)
+    
     def get_square(self, x1=None, y1=None,
-                     length=None, heading=None,
-                     color=None, width=None,
+                     side_h=None,
+                     side_v=None,
+                     width=None,
+                     heading=None,
+                     color=None,
                      **kwargs):
-        """ Get square turtle style array of xi,yi: i=0,1,2,3
+        """ Get square, whose lower left corner is
+            x1,y1 turtle style array of xi,yi: i=0,1,2,3
             i=3    i=2
             
             i=0    i=1
         :x1: x origin coordinate default: self.x_cor
         :y1: y origin coordinate default: self.y_cor
-        :length: length of line default: self.side (diameter)
-        :color: line color default: from kwargs['fill'], else self.color
+        :side_h: horizontal default: self.side_h
+        :side_v: vertical default self.side_v, side_h
         :width: line width default: from kwargs['width'], else self.line_width
+        :color: line color default: from kwargs['fill'], else self.color
         :heading: heading in deg default: self.heading (of bounding box)
         :kwargs: additional parameters
                 defaults: color - self.color, else black
@@ -527,22 +666,44 @@ class DmMarker:
             x1 = self.x_cor
         if y1 is None:
             y1 = self.y_cor
-        if length is None:
-            length = self.side
+        if side_h is None:
+            side_h = self.side_h
+        if side_v is None:
+            side_v = self.side_v
+        if side_v is None:
+            side_v = side_h
+        if width is None:
+            width = self.line_width 
+        if width is None:
+            width = 1
         if heading is None:
             heading = self.heading
-        
-        x1,y1 = self.origin_rotated(x1, y1, rotation=heading, side=length)
+        x0,y0 = x1,y1
+        x1,y1 = self.origin_rotated(x1, y1, rotation=heading,
+                                    side_h=side_h, side_v=side_v)
+        if x1 is None:
+            x1 = x0
+            if x1 is None:
+                x1 = self.x_cor
+        if y1 is None:
+            y1 = y0
+            if y1 is None:
+                y1 = self.y_cor
         corners = []    
-        for _ in range(4):
+        for iside in range(4):
             SlTrace.lg(f"add_line(): x1={x1:.0f}, y1={y1:.0f}"
-                       f" length={length:.0f}, heading={heading:.0f}",
+                       f" side_h={side_h:.0f}, side_v={side_v:.0f}, width={width:.0f}"
+                       f" heading={heading:.0f}",
                        "canvas_display")
             corners.append((x1,y1))
-            x1,y1 = self.vadd(x1, y1, heading=heading, length=length)
+            if iside%2 == 0:
+                leng = side_h # first, third
+            else:
+                leng = side_v
+            x1,y1 = self.vadd(x1, y1, heading=heading, length=leng)
             heading += 90
         SlTrace.lg(f"x1={x1:.0f}, y1={y1:.0f}"
-                   f" length={length:.0f}, heading={heading:.0f} AFTER",
+                   f" side_h={side_h:.0f} side_v={side_v:.0f}, heading={heading:.0f} AFTER",
                    "canvas_display")
         return corners
 
@@ -687,15 +848,17 @@ class DmMarker:
         return self.copy_move
     
     def add_tag(self, tag):
-        SlTrace.lg(f"{self.draw_type}.add_tag({tag})", "tags")
+        SlTrace.lg(f"{self.draw_type}.add_tag: tag:{tag}", "tags")
         if self.drawn is None:
             self.drawn = DrawnArtifacts()
         self.drawn.tags.append(tag)
+        self.drawn_t[tag] = self
 
-    def delete_tag(self,tag):
-        SlTrace.lg(f"{self.draw_type}.delete_tag({tag})", "tags")
+    def delete_tag(self, tag):
+        SlTrace.lg(f"{self.draw_type}.delete_tag: tag:{tag}", "tags")
         canvas = self.get_canvas()
         canvas.delete(tag)
+        del(self.drawn_t[tag])
 
     def add_image_ref(self, image):
         if self.drawn is None:
@@ -711,16 +874,32 @@ class DmMarker:
         """ Draw/Redraw figure
         Set current marker attributes
         first removing any preexisting artifacts
+        :recorded: True - required recorded
         """
-        #self.undraw()
-        self.drawer.set_side(self.side)
-        self.drawer.set_width(self.line_width)
+        SlTrace.lg(f"draw: {self}", "draw")
+        if not self.is_recorded():
+            SlTrace.lg(f"draw of unrecorded {self}")
+        if self.is_drawn():
+            SlTrace.lg(f"draw: of already drawn {self}")
+        """ Don' change defaults
+        self.drawer.set_side_h(self.side_h)
+        self.drawer.set_side_v(self.side_v)
+        self.drawer.set_line_width(self.line_width)
         self.drawer.set_heading(self.heading)
-        self.drawn = DrawnArtifacts() 
+        """
+        self.drawn = DrawnArtifacts()
+        self.isdrawn = True 
         
     def undraw(self):
         """ Remove drawn artifacts and resources
+        :recorded: True - required recorded
         """
+        SlTrace.lg(f"undraw: {self}", "undraw")
+        
+        if not self.is_recorded():
+            SlTrace.lg(f"undraw of unrecorded {self}")
+        if not self.is_drawn():
+            SlTrace.lg(f"undraw: of not drawn:{self}")
         if SlTrace.trace("tags"):
             if self.drawn is None:
                 tags_str = "None"
@@ -734,4 +913,8 @@ class DmMarker:
             for image in self.drawn.images:
                 self.delete_image(image)
             self.drawn.images = []
-            
+        self.isdrawn = False    
+
+    def is_drawn(self):
+        return self.isdrawn
+    

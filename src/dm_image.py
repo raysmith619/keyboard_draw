@@ -52,23 +52,22 @@ class DmImage(DmMarker):
         """
         
         image_key = self.file
-        image = self.image_base
+        img = self.image_base
         rotation = (self.heading + self.image_heading_default)%360
         if self.marker_type != "letter":
             if rotation > 90 and rotation < 270:
                 # for image around a vertical axis use Image.FLIP_LEFT_RIGHT
                 # for horizontal axis use: Image.FLIP_TOP_BOTTOM
-                image = image.transpose(Image.FLIP_TOP_BOTTOM)            
+                img = img.transpose(Image.FLIP_TOP_BOTTOM)            
                 SlTrace.lg(f"rotation:{rotation} FLIP_TOP_BOTTOM", "image_display")
             elif rotation > 270:
-                #image = image.transpose(Image.FLIP_LEFT_RIGHT)            
-                #image = image.transpose(Image.FLIP_TOP_BOTTOM)            
+                #img = img.transpose(Image.FLIP_LEFT_RIGHT)            
+                #img = img.transpose(Image.FLIP_TOP_BOTTOM)            
                 SlTrace.lg(f"rotation:{rotation} FLIP_LEFT_RIGHT", "image_display")
-        self.marker_image_width = self.side*2   # allow rotation
-        self.marker_image_width = self.side     # Workaround untill...
-        self.marker_image_height = self.marker_image_width
+        self.marker_image_width = self.side_h     # Workaround untill...
+        self.marker_image_height = self.side_v
         try:
-            image = image.resize((int(self.marker_image_width),
+            img = img.resize((int(self.marker_image_width),
                          int(self.marker_image_height)),
                         Image.ANTIALIAS)
         except:
@@ -77,11 +76,11 @@ class DmImage(DmMarker):
             return 
         SlTrace.lg(f"rotate image: {self.file}", "image")    
         if self.marker_type != "letter":
-            image = image.rotate(rotation)
+            img = img.rotate(rotation)
 
         SlTrace.lg(f"PhotoImage: {self.file}", "image")    
         try:
-            photo_image = ImageTk.PhotoImage(image=image)
+            photo_image = ImageTk.PhotoImage(image=img)
         except:
             SlTrace.lg(f"Can't make PhotoImage({image_key}):"
                        f"\n  {self.marker_image_width}x{self.marker_image_height}")
@@ -113,7 +112,7 @@ if __name__ == "__main__":
     dm_base = DmImage(drawer, image_base=image,
                       x_cor=-100, y_cor=100)
     beg=0
-    extent = dm_base.side*nsquare
+    extent = dm_base.side_h*nsquare
     x_beg = -extent/2
     y_beg = x_beg
     for i in range(beg, beg+nsquare):
@@ -122,9 +121,9 @@ if __name__ == "__main__":
         color = colors[icolor]
         dm = dm_base.change(heading=ang, color=color,
                             line_width=(i+1)*2,
-                            x_cor=x_beg+i*dm_base.side,
-                            y_cor=y_beg+i*dm_base.side,
-                            side=(i+5)*20)
+                            x_cor=x_beg+i*dm_base.side_h,
+                            y_cor=y_beg+i*dm_base.side_v,
+                            side_h=(i+5)*20)
         dms.append(dm)
         
     for dm in dms:

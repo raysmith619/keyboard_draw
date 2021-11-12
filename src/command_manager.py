@@ -345,9 +345,6 @@ class CommandManager:
             return
 
         cmds = self.command_stack.get_cmds()
-        nprint = max_print
-        if SlTrace.trace("verbose"):
-            nprint = 9999
         for cmd in cmds:
             if stack_str != "":
                 stack_str += "\n"
@@ -365,22 +362,15 @@ class CommandManager:
         self.drawing_controller.select_print(tag, trace=trace)
 
 if __name__ == "__main__":
-    from tkinter import *
-    from keyboard_draw import KeyboardDraw
-    from kbd_cmd_proc import KbdCmdProc
+    import tkinter as tk
     
-    root = Tk()
+    from dm_drawer import DmDrawer
     
-    kb_draw = KeyboardDraw(root,  title="Testing DmImage",
-                hello_drawing_str="",
-                draw_x=100, draw_y=50,
-                draw_width=1500, draw_height=1000,
-                kbd_win_x=50, kbd_win_y=25,
-                kbd_win_width=600, kbd_win_height=300,
-                show_help=False,        # No initial help
-                with_screen_kbd=False   # No screen keyboard
-                           )
-    mgr = CommandManager(kb_draw)
+    root = tk.Tk()
+    
+    drawer = DmDrawer(root,  title="Testing CommandManager")
+    drawer.color_current = "w"
+    mgr = CommandManager(drawer)
     mgr.cmd_stack_print("cmd_stack_print")
     
     root.mainloop()

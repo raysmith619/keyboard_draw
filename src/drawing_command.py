@@ -9,8 +9,7 @@ import math
 
 from select_trace import SlTrace
 from select_error import SelectError
-from dm_marker import tp
-from pip._internal import self_outdated_check
+from dm_marker import DmMarker, tp
         
 class DrawingCommand:
     """
@@ -23,7 +22,9 @@ class DrawingCommand:
     EMMarkerGroup new_markers    # New blocks - may be redundant
     """
     command_manager = None
+    display_controller = None
     SlTrace.lg(f"command_manager: {command_manager}")
+    dc_id = 0               # Unique command id
     @classmethod
     def set_command_manager(cls, cmd_mgr):
         """ Setup command manager link
@@ -40,7 +41,16 @@ class DrawingCommand:
         cls.drawing_controller = controller
         
         
-    def __init__(self, action):
+    def __init__(self, action, dc_id=None):
+        """ Create new command
+        :dc_id: Use this id instead of creating unique id
+                Generally for short lived execute copy
+                default: create new unique id
+        """
+        if dc_id is None:
+            DrawingCommand.dc_id += 1
+            dc_id = DrawingCommand.dc_id
+        self.dc_id = dc_id
         self.action = action
         if DrawingCommand.command_manager is None:
             raise SelectError("No DrawingCommandManager")
@@ -51,17 +61,25 @@ class DrawingCommand:
         self.new_select = []    # Default  - no change
         self.prev_markers = []
         self.new_markers = []
-        self.prev_loc = self.drawing_controller.cmd_get_loc()
+        self.prev_loc = self.drawing_controller.get_loc()
         self.new_loc = None     # New location (x,y)
         self.prev_heading = self.drawing_controller.get_heading()
         self.heading = None # New heading
-
-    def copy(self):
-        new_obj = DrawingCommand(self.action)
+        self.copy_move = None   # Command is copy or move
+        self.side_h = None
+        self.side_v = None
+        self.x_cor = None 
+        self.y_cor = None 
+         
+        
+    def copy(self, dc_id=None):
+        """ Make copy - new unique object unless dc_id passed in
+        """
+        new_obj = DrawingCommand(self.action, dc_id=dc_id)
         new_obj.prev_select = self.prev_select
         new_obj.new_select = self.new_select
-        new_obj.prev_markers = self.prev_markers
-        new_obj.new_markers = self.new_markers
+        new_obj.prev_markers = DmMarker.copy_markers(self.prev_markers)
+        new_obj.new_markers = DmMarker.copy_markers(self.new_markers)
         new_obj.new_loc = self.new_loc
         new_obj.prev_loc = self.prev_loc
         new_obj.heading = self.heading 
@@ -73,7 +91,7 @@ class DrawingCommand:
         Used to generate revsible changes
         """
 
-        new_obj = self.copy()
+        new_obj = self.copy(dc_id=self.dc_id)
         new_obj.new_select = self.prev_select
         new_obj.prev_select = self.new_select
         
@@ -138,20 +156,20 @@ class DrawingCommand:
         try:
             cmd = self.copy()    # Create "disposable" copy of command
         except Exception as e:
-            e.print_stack_trace()
+            SlTrace.lg(f"undo except: {e}")
             return False
         
         temp = cmd.new_markers
-        cmd.new_markers = cmd.prev_markers;
-        cmd.prev_markers = temp;
+        cmd.new_markers = cmd.prev_markers
+        cmd.prev_markers = temp
         
         temp = cmd.get_heading()
-        cmd.heading = cmd.prev_heading;
-        cmd.heading = temp;
+        cmd.heading = cmd.prev_heading
+        cmd.heading = temp
         
         temp = cmd.get_next_loc()
-        cmd.new_loc = cmd.prev_loc;
-        cmd.prev_loc = temp;
+        cmd.new_loc = cmd.prev_loc
+        cmd.prev_loc = temp
         
         temp_sel = cmd.new_select
         cmd.new_select = cmd.prev_select
@@ -202,6 +220,7 @@ class DrawingCommand:
                             # independent 
         for marker in new_cpy.new_markers:
             chg_marker = marker.change(move_it=True)
+            chg_marker.record()     # Record as new marker
             chg_markers.append(chg_marker)
         new_cpy.new_markers = chg_markers
         new_cpy.set_new_loc()
@@ -218,13 +237,6 @@ class DrawingCommand:
         new_cmd = self.get_repeat()
         res = new_cmd.do_cmd()
         return res 
-        
-    def add_marker(self, marker):
-        """ Add block to display
-        :marker: to add
-        """
-        self.new_markers.append(marker)
-        return marker
 
     def add_prev_marker(self, marker):
         """ Add block to remove from display
@@ -233,14 +245,19 @@ class DrawingCommand:
         self.prev_markers.append(marker)
         return marker
         
-    def add_markers(self, markers):
+    def add_marker(self, markers):
         """ Add one or a list of markers
         :markers: marker or list to add
+        :returns: markers
         """
         if not isinstance(markers, list):
             markers = [markers]     # list of one
         for marker in markers:
-            self.add_marker(marker)
+            if marker.is_recorded():
+                SlTrace.lg(f"add_marker: already recorded:{marker}")
+            else:
+                marker.record()
+            self.new_markers.append(marker)
         return markers
         
     def add_prev_markers(self, markers):
@@ -307,12 +324,12 @@ class DrawingCommand:
     
     def remove_select(self, marker):
         ns = []
-        for mk in self.new_selects:
+        for mk in self.new_select:
             if mk == marker:
                 pass
             else:
                 ns.append(mk)
-        self.new_selects = ns 
+        self.new_select = ns 
         return True
     
     
@@ -369,22 +386,23 @@ class DrawingCommand:
                 SlTrace.lg(f"do_cmd({self.action}) can't undo/repeat", "execute")
         return res
     
-    def add_pt(self, x1=None, y1=None, side=None,
+    def add_pt(self, x1=None, y1=None, side_h=None,
                heading=None):
-        """ Calculate x2,y2 from x1,y1,heading 
+        """ Calculate x2,y2 from x1,y1,heading
+        :side_h: side horizontal (in heading) 
         :returns: x2,y2
         """
         if x1 is None:
             x1 = self.get_x_cor()
         if y1 is None:
             y1 = self.get_y_cor()
-        if side is None:
-            side = self.get_side()
+        if side_h is None:
+            side_h = self.get_side_h()
         if heading is None:
             heading = self.get_heading()
         theta = math.radians(heading)
-        x_chg = side*math.cos(theta)
-        y_chg = side*math.sin(theta)
+        x_chg = side_h*math.cos(theta)
+        y_chg = side_h*math.sin(theta)
         x2 = x1 + x_chg
         y2 = y1 + y_chg
         return x2,y2
@@ -394,30 +412,36 @@ class DrawingCommand:
      Utility functions to get data from or add data to command
     """
     def get_copy_move(self):
-        if hasattr(self, "copy_move") and self.copy_move is not None:
+        if self.copy_move is not None:
             return self.copy_move
-         
-        if len(self.new_markers) > 0:
-            side = self.new_markers[-1].get_copy_move()
-            return side
         
         return self.drawing_controller.get_copy_move()
     
-    def get_side(self):
-        if hasattr(self, "side") and self.side is not None:
-            return self.side
+    def get_side_h(self):
+        if self.side_h is not None:
+            return self.side_h
          
         if len(self.new_markers) > 0:
-            side = self.new_markers[-1].get_side()
-            return side
+            side_h = self.new_markers[-1].get_side_h()
+            return side_h
         
-        return self.drawing_controller.get_side()
+        return self.drawing_controller.get_side_h()
+    
+    def get_side_v(self):
+        if self.side_v is not None:
+            return self.side_v
+         
+        if len(self.new_markers) > 0:
+            side_v = self.new_markers[-1].get_side_v()
+            return side_v
+        
+        return self.drawing_controller.get_side_v()
 
     def get_loc(self):
         return (self.get_x_cor(), self.get_y_cor())
             
     def get_x_cor(self):
-        if hasattr(self, "x_cor") and self.x_cor is not None:
+        if self.x_cor is not None:
             return self.x_cor 
          
         if len(self.new_markers) > 0:
@@ -427,7 +451,7 @@ class DrawingCommand:
         return self.drawing_controller.get_x_cor()
         
     def set_x_cor(self, new_val):
-        if hasattr(self, "x_cor") and self.x_cor is not None:
+        if self.x_cor is not None:
             self.x_cor = new_val         
         elif len(self.new_markers) > 0:
             self.new_markers[-1].x_cor = new_val
@@ -435,7 +459,7 @@ class DrawingCommand:
             self.x_cor = new_val
 
     def get_y_cor(self):
-        if hasattr(self, "y_cor") and self.y_cor is not None:
+        if self.y_cor is not None:
             return self.y_cor 
 
         if len(self.new_markers) > 0:
@@ -445,12 +469,37 @@ class DrawingCommand:
         return self.drawing_controller.get_y_cor()
         
     def set_y_cor(self, new_val):
-        if hasattr(self, "y_cor") and self.y_cor is not None:
+        if new_val is not None:
             self.y_cor = new_val         
         elif len(self.new_markers) > 0:
             self.new_markers[-1].y_cor = new_val
         else:
             self.y_cor = new_val
+    
+    def get_center(self):
+        """ get center of command - last marker
+        """
+        markers = self.get_markers()
+        if len(markers) > 0:
+            center = markers[-1].get_center()
+        else:
+            center = 0,0           
+        return center
+    
+    def get_next_center(self):
+        """ get center of next command - last marker
+        """
+        if self.new_loc is not None:
+            x1,y1= self.new_loc
+            return self.add_pt(x1=x1, y1=y1)
+        
+        markers = self.get_markers()
+        if len(markers) > 0:
+            loc = markers[-1].get_next_loc()
+        else:
+            loc = self.add_pt()            
+        x1,y1 = loc
+        return self.add_pt(x1=x1, y1=y1)
     
     def get_next_loc(self):
         """ get location of next command - last marker
@@ -523,6 +572,7 @@ class DrawingCommand:
     """
     def __str__(self):
         cmd_str = self.action
+        cmd_str += f" dc_id:{self.dc_id}"
         cmd_str += f" heading:{self.get_heading()}"
         cmd_str += f" to={tp(self.get_next_loc())}"
         if len(self.new_markers) > 0:
@@ -577,7 +627,7 @@ class DrawingCommand:
         
 if __name__ == "__main__":
     from tkinter import *
-    from keyboard_draw import KeyboardDraw
+    from dm_drawer import DmDrawer
     from command_manager import CommandManager
     from dm_circle import DmCircle
     from dm_image import DmImage
@@ -589,13 +639,10 @@ if __name__ == "__main__":
     from dm_move_key import DmMoveKey
     root = Tk()
     
-    kb_draw = KeyboardDraw(root,  title="Testing CommandManager",
-                show_help=False,        # No initial help
-                with_screen_kbd=False,   # No screen keyboard
-                           )
-    kb_draw.color_current = "w"
+    drawer = DmDrawer(root,  title="Testing DrawingCommand")
+    drawer.color_current = "w"
     
-    mgr = CommandManager(kb_draw)
+    mgr = CommandManager(drawer)
     SlTrace.lg(f"command_manager - DC: {DrawingCommand.command_manager}")
     DrawingCommand.set_command_manager(mgr)
     SlTrace.lg(f"command_manager - DC: {DrawingCommand.command_manager}")
@@ -618,13 +665,13 @@ if __name__ == "__main__":
         """
         if (keysym == "Up" or keysym == "Down"
                or keysym == "Left" or keysym == "Right"):
-            prev_heading = kb_draw.get_heading()
-            marker = DmMoveKey(kb_draw, keysym=keysym)
+            prev_heading = drawer.get_heading()
+            marker = DmMoveKey(drawer, keysym=keysym)
             new_heading = marker.heading
             if new_heading != prev_heading:
                 marker = marker.change(side=0)
             cmd = DrawingCommand(f"cmd_{keysym}")
-            cmd.add_markers(marker)
+            cmd.add_marker(marker)
             SlTrace.lg(f"cmd={cmd}", "cmd_trace")
             cmd.do_cmd() 
         else:
@@ -633,11 +680,11 @@ if __name__ == "__main__":
         """ Setup a scene with a few markers
         """
         markers = [
-                DmLine(kb_draw),
-                DmSquare(kb_draw),
-                DmCircle(kb_draw),
-                DmTriangle(kb_draw),
-                DmText(kb_draw, text="A"),
+                DmLine(drawer),
+                DmSquare(drawer),
+                DmCircle(drawer),
+                DmTriangle(drawer),
+                DmText(drawer, text="A"),
                 ]
     
         beg_x = -5*markers[0].side
@@ -646,7 +693,7 @@ if __name__ == "__main__":
             x_cor = beg_x+i*marker.side
             y_cor = beg_y+i*marker.side 
             cmd = DrawingCommand(f"cmd_{marker}")
-            cmd.add_markers(marker.change(x_cor=x_cor, y_cor=y_cor))
+            cmd.add_marker(marker.change(x_cor=x_cor, y_cor=y_cor))
             SlTrace.lg(f"cmd={cmd}", "cmd_trace")
             cmd.do_cmd() 
     
@@ -655,15 +702,15 @@ if __name__ == "__main__":
         keysym = event.keysym
         keycode = event.keycode
         prev_marker = mgr.last_command()
-        x_cor, y_cor = kb_draw.cmd_get_loc()
+        x_cor, y_cor = drawer.get_loc()
         SlTrace.lg(f"on_text_entry: keysym: {keysym} keycode: {keycode}")
         if keysym == 'i':
-            image_info = kb_draw.pick_next_image()
+            image_info = drawer.pick_next_image()
             image_file, image = image_info
-            marker = DmImage(kb_draw, file=image_file, image_base=image,
+            marker = DmImage(drawer, file=image_file, image_base=image,
                       x_cor=x_cor, y_cor=y_cor)
             cmd = DrawingCommand(f"cmd_{marker}")
-            cmd.add_markers(marker)
+            cmd.add_marker(marker)
             SlTrace.lg(f"cmd={cmd}")
             cmd.do_cmd() 
         elif keysym == 'u':
@@ -671,15 +718,15 @@ if __name__ == "__main__":
         elif keysym == 'r':
             mgr.redo()
         elif keysym == 's':
-            marker = DmSquare(kb_draw)
+            marker = DmSquare(drawer)
             cmd = DrawingCommand(f"cmd_{marker}")
-            cmd.add_markers(marker.change(x_cor=x_cor, y_cor=y_cor))
+            cmd.add_marker(marker.change(x_cor=x_cor, y_cor=y_cor))
             SlTrace.lg(f"cmd={cmd}")
             cmd.do_cmd() 
         elif keysym == 't':
-            marker = DmTriangle(kb_draw)
+            marker = DmTriangle(drawer)
             cmd = DrawingCommand(f"cmd_{marker}")
-            cmd.add_markers(marker.change(x_cor=x_cor, y_cor=y_cor))
+            cmd.add_marker(marker.change(x_cor=x_cor, y_cor=y_cor))
             SlTrace.lg(f"cmd={cmd}")
             cmd.do_cmd() 
         elif keysym == "f":         # (fix)Setup scene
@@ -694,7 +741,7 @@ if __name__ == "__main__":
         else:
             SlTrace.lg("??")
     
-    kb_draw.set_loc(-400, 0)
+    drawer.set_loc(-400, 0)
         
     root.bind('<KeyPress>', on_key_press)
     root.mainloop()   

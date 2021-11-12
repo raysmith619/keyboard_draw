@@ -19,9 +19,9 @@ class DmPen(DmMarker):
         :drawer: drawing control
         :kwargs: basic DmMarker args
         """
-        super().__init__(drawer, draw_type=draw_type, **kwargs)
         self.pen_desc = pen_desc
-
+        super().__init__(drawer, draw_type=draw_type, **kwargs)
+ 
     def __str__(self):
         str_str = self.__class__.__name__
         str_str += f"_{self.pen_desc}" 

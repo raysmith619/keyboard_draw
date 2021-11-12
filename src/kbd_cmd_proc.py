@@ -10,6 +10,7 @@ from tkinter import colorchooser
 
 from select_trace import SlTrace
 from select_error import SelectError
+from select_list import SelectList
 from attr_change import AttrChange, Attribute
 
 from command_manager import CommandManager
@@ -19,7 +20,7 @@ from dm_color import DmColor
 from dm_heading import DmHeading
 from dm_image import DmImage
 from dm_line import DmLine
-from dm_marker import DmMarker
+from dm_marker import DmMarker, tp
 from dm_move import DmMove
 from dm_move_key import DmMoveKey
 from dm_pen import DmPen
@@ -27,11 +28,12 @@ from dm_pointer import DmPointer
 from dm_position import DmPosition
 from dm_square import DmSquare
 from dm_triangle import DmTriangle
-
 from dm_text import DmText
 from dm_size import DmSize
 from dm_circle import DmCircle
 from _operator import index
+
+from data_files import DataFiles, DataFileGroup
 
 class KbdCmdProc:
     
@@ -42,15 +44,15 @@ class KbdCmdProc:
         self.cmd_pointer = None
         self.drawer.master.bind("<KeyPress>", self.on_key_press)
         self.is_drawing = True      # Start in drawing mode 
-        
+        self.shift_on = False   # Shifted == True
         """ Translation (partial) from key to keysym
         """
         self.key2sym = {
             ' ' :"space",
             '=' : "equal",
             '/' : "slash",
-            '[' : "leftbracket",
-            ']' : "rightbracket",
+            '[' : "bracketleft",
+            ']' : "bracketright",
             'Space':"space",    # ScreenKbdFlex - special
             }
         
@@ -58,7 +60,7 @@ class KbdCmdProc:
             (self.cmd_color_adjust, ('w', 'equal')),
             (self.cmd_visibility_adjust, ('minus','plus')),
             (self.cmd_size_adjust, (':',';','a','q','r','t')),
-            (self.cmd_position_adjust, ('c','m','Left','Right','Up', 'Down')),
+            (self.cmd_position_adjust, ('m','Left','Right','Up', 'Down')),
             (self.cmd_add_new_direction, ('0','1','2','3','4','5','6','7','8','9')),
             (self.cmd_help, 'h'),
             (self.cmd_images, ('j','k','l',
@@ -71,7 +73,9 @@ class KbdCmdProc:
             (self.cmd_restore_all, 'x'),
             (self.cmd_clear_all, 'z'),
             (self.cmd_do_trace, '!'),
-            (self.set_text_mode, ('e','END'))
+            (self.set_text_mode, ('e','END')),
+            (self.list_cmds, 'c'),
+            (self.list_drawn, 'd')
             ]
         self.setup()
 
@@ -140,14 +144,14 @@ class KbdCmdProc:
         c : move to center
         e : do letters / text, until DEL key pressed
         s : "shape" - set shape to next
-        d : "determine" choose shape - via dialog
+        d : 
         f : "fan" - set shape to rotate as we move
         z : clear screen of drawing, reset to original values
         
     Image Keys
         w : set colors to change each move
         s : Set shapes to change each move
-        d : Change to a particular shape
+        d : list drawn markers
         j : Select an animal picture for each move
         k : Change animal picture each press
         l : Change family picture each press
@@ -175,6 +179,7 @@ class KbdCmdProc:
         self.do_keysym(keysym)
         
     def do_keysym(self, keysym):
+        SlTrace.new_copy_count = 0  # TFD
         SlTrace.lg(f"do_keysym: {keysym}", "input")
         if keysym == "check":
             SlTrace.lg("Just checking")
@@ -197,28 +202,36 @@ class KbdCmdProc:
             Return - go to next line
         """
         SlTrace.lg(f"text_cmd({keysym})")
-        if keysym.lower() == "space":   # Support symbolic
+        kbs = keysym.lower()
+        if kbs == "space":   # Support symbolic
             keysym = " "
             
-        if keysym == "BackSpace":
+        if (kbs == "bksp" or kbs == "backspace"):
             return self.command_manager.undo()
         
-        if keysym.lower() == 'end':
+        if kbs == 'end':
             self.set_drawing_mode()
             return True
         
-        if keysym == "Return" or keysym == "ENTER":
+        if (kbs == "shift"
+            or kbs == "shift_l"
+            or kbs == "shift_r"):
+            return self.cmd_shift()
+            
+        if kbs == "return" or kbs == "enter":
             self.cmd_newline()
             return True 
         
-        if keysym in ['Right','Left', 'Up', 'Down']:
+        if kbs in ['right','left', 'up', 'down']:
             self.drawing_cmd(keysym)
             return
 
         cmd = DrawingCommand(f"cmd_{keysym}")
-        marker = DmText(self, text=keysym)
+        new_color = self.get_next("color")
+        marker = DmText(self, text=keysym,
+                        color=new_color)
         cmd.add_marker(marker)
-        return cmd.do_cmd()
+        return self.do_cmd(cmd)
                 
         SlTrace.report(f"Don't recognize text {keysym}"
                        f" as a text_cmd")
@@ -271,17 +284,44 @@ class KbdCmdProc:
         image_file = self.get_image_file(group=group, file=file,
                                          next=True)
         if image_file is None:
-            SlTrace.report(f"No image file group {group}"
-                           f" groups: {self.image_group_names}")
+            SlTrace.report(f"No image file group {group}")
             return False
         
-        image_base = self.drawer.image_file_to_image(image_file)
+        image_base = self.image_file_to_image(image_file)
         if image_base is None:
             raise SelectError(f"Can't get image from {image_file}")
         
-        return self.cmd_do_image(file=image_file,
-                                 image_base=image_base)
+        return self.cmd_do_image(group=group, file=image_file)
+
+
+    def pick_next_image(self):
+        """ Get next from current image group
+        :returns: imageinfo (key, image)
+        """
+        display_file = self.get_image_file()
+        return self.image_file_to_info(display_file)
+
+    def image_file_to_image(self, file):
+        """ Get base image from file
+        """
+        image = self.drawer.marker_image_hash.get_image(
+                            key=file,
+                            photoimage=False)
+        return image
+    
+    def image_file_to_info(self, display_file):
+        """ Convert file name(key) to image_info(key, image)
+        :display_file: display file name/key
+        :returns: image_info (key, image)
+                    None if can't get it
+        """
+        image = self.image_file_to_image(display_file)
+        if image is None:
+            SlTrace.report(f"Can't load image:{display_file}")
+            return None
         
+        return (display_file, image)
+       
         
     def cmd_help(self, keysym):
         """ Generate help message
@@ -297,7 +337,8 @@ class KbdCmdProc:
         if keysym == 'e' or keysym == "End":
             self.set_text_mode(keysym)
             return
-            
+        if keysym == " 0 ":
+            keysym = "0"    
         keysym = self.key_to_sym(keysym)    # Translate if necess
         dr_fun = self.get_key_fun(keysym)
         if dr_fun is None:
@@ -315,7 +356,7 @@ class KbdCmdProc:
         for keys_to_fun in self.keys_to_funs:
             fun, syms = keys_to_fun
             if not isinstance(syms, tuple):
-                syms = (syms)   # tuple of one
+                syms = (syms,)   # tuple of one
             if keysym in syms:
                 return fun
         
@@ -392,7 +433,7 @@ class KbdCmdProc:
         if marker_last is None:
             marker = DmColor(self, color=color)
             cmd = DrawingCommand(f"cmd_{keysym}")
-            cmd.add_markers(marker)
+            cmd.add_marker(marker)
         else:
             #self.undo_last_marker_command() # undo to last marker
             ###cmd = cmd_last.reverse_copy()
@@ -401,7 +442,7 @@ class KbdCmdProc:
             marker = marker.use_locale(marker_last)
             marker = marker.change(color=color)
             cmd.add_prev_markers(marker_last)
-            cmd.add_markers(marker)
+            cmd.add_marker(marker)
 
         return cmd.do_cmd()
 
@@ -422,14 +463,40 @@ class KbdCmdProc:
                        'bracketleft':"princesses",
                        'bracketright':"other_stuff",
             }
-        if keysym in char2group:
+        if keysym == 'j':
+            return self.select_image()
+        elif keysym in char2group:
             group = char2group[keysym]
         else:
             SlTrace.report(f"image command {keysym} is not available yet")
             return False
         
         return self.cmd_do_image(group=group)
+
+    def select_image(self):
+        """ Select image from all image groups
+        """
+        dfgroups = self.get_image_file_groups()
+        select_image_files = []
+        select_group_files = {} # hash name:(grp,file)
+        for dfg in dfgroups:
+            for file in dfg.select_image_files:
+                select_image_files.append(file)
+                select_group_files[file] = (dfg, file)
+            select_image_files.extend(dfg.select_image_files)
+        app = SelectList(items=select_image_files, default_to_files=True,
+                         size=(200,1000), image_size=(200,100),
+                         title="All Image Buttons")
+        sel = app.get_selected(return_text=True)
         
+        if sel is not None:
+            dfg_file = select_group_files[sel]
+            group, file = dfg_file
+            group_name = group.group_name
+            return self.cmd_do_image(group=group_name, file=file)
+        else:
+            return False 
+                
     def clear_all(self):
         """ Clear screen
         """
@@ -442,7 +509,8 @@ class KbdCmdProc:
         self.x_cor = 0
         self.y_cor = 0
         self.heading = 0
-        self.side = 100
+        self.side_h = 100
+        self.side_v = self.side_h
         self.line_width = 4
         self.copy_move = "copy"
         self.set_newline()
@@ -465,31 +533,32 @@ class KbdCmdProc:
         :returns: result of command
                 False if command could not be executed
         """
-        next_loc = cmd.get_next_loc()
-        if self.is_on_canvas(next_loc):
+        if not self.is_on_edge(cmd):
             return cmd.do_cmd()     # No change to cmd
         
-        if self.adj_movement(cmd):
-            return cmd.do_cmd()     # Executed changed
+        return self.adj_movement(cmd)
         
         return False                # Can't execute    
 
-    def is_on_canvas(self, loc):
-        """ Check if location is on canvas
-        :loc: (x,y) location (0,0) is center
+    def is_on_edge(self, cmd):
+        """ Check if destination location is on
+        or overedge of canvas
+        :cmd: command to execute
         """
-        x,y = loc
-        boundary = 10
+        x,y = cmd.get_center()
+        boundary = 5
+        radius = cmd.get_side_h()*math.sqrt(2)/2
         canvas = self.get_canvas()
         width = canvas.winfo_width()
         height = canvas.winfo_height()
-        if (x < -width/2 + boundary
-             or x > width/2 - boundary
-             or y < -height/2 + boundary
-             or y > height/2 - boundary):
-            return False 
+        if (x < -width/2 + radius + boundary -radius 
+             or x > width/2 - radius - boundary
+             or y < -height/2 + radius + boundary - radius
+             or y > height/2 - radius - boundary):
+            SlTrace.lg(f"is_on_edge {tp((x,y))}: {cmd}")
+            return True 
         
-        return True
+        return False
 
     def adj_movement(self, cmd):
         """ Adjust cmd movement to keep on screen
@@ -498,12 +567,13 @@ class KbdCmdProc:
         If at 90 deg to edge "bounce" off at 90 deg but
         displaced by size toward free side.
         """
-        boundary = cmd.get_side()/2
+        boundary = 5
+        radius = cmd.get_side_h()*math.sqrt(2)/2
         heading = cmd.get_heading()
         theta = math.radians(heading)
         xchg = math.cos(theta)
         ychg = math.sin(theta)
-        loc = cmd.get_next_loc()
+        loc = cmd.get_next_center()
         x,y = loc
         canvas = self.get_canvas()
         width = canvas.winfo_width()
@@ -512,56 +582,77 @@ class KbdCmdProc:
         y_edge = False
         SlTrace.lg(f"adj: heading({heading:.1f} xchg={xchg:.2f} ychg={ychg:.2f}") 
         
-        if x < -width/2 + boundary:
+        if x < -width/2 + radius + boundary - radius:
             x_edge = True 
             new_xchg = -xchg
-        elif x > width/2 - boundary:
+        elif x > width/2 - radius - boundary:
             x_edge = True 
             new_xchg = -xchg
         else:
             new_xchg = xchg
-        if y < -height/2 + boundary:
+        if y < -height/2 + radius + boundary - radius:
             y_edge = True 
             new_ychg = -ychg
-        elif y > height/2 - boundary:
+        elif y > height/2 - radius - boundary:
             y_edge = True 
             new_ychg = -ychg
         else:
             new_ychg = ychg
             
         if not x_edge and not y_edge:
-            return True         # OK - No adjustment required
+            return cmd.do_cmd()         # OK - do unmodified
 
+        if len(cmd.new_markers) > 0:
+            cmd1 = cmd.copy()
+            marker = cmd1.new_markers[-1].copy()
+            marker.record()     # Record as new marker
+            cmd1.new_markers[-1] = marker
+            cmd1.do_cmd()        # Position our selves before changing
+            SlTrace.lg(f"Position our selves: {cmd1}")
+        else:
+            return True         # No command, nor bounce command 
+    
+        new_x_cor = None            # Set if found 
+        new_y_cor = None
+        new_heading = None
+        new_color = self.get_next("color")
+        if new_color == "yellow":    # Hard to see
+            new_color = self.get_next("color")    # skip
+            
         if abs(new_ychg) < 1e-9:
             SlTrace.lg(f"new_ychg == 0: y_cor: {cmd.get_y_cor()}")
-            new_y_cor = cmd.get_y_cor()+cmd.get_side()
-            if new_y_cor < -height/2 + boundary:
-                new_y_cor = height/2 - boundary
-            elif new_y_cor > height/2 - boundary:
-                new_y_cor = -height/2 + boundary
+            new_y_cor = cmd.get_y_cor()+cmd.get_side_h()
+            if new_y_cor < -height/2 + radius:
+                new_y_cor = height/2 - radius
+            elif new_y_cor > height/2 - radius:
+                new_y_cor = -height/2 + radius
             
-            cmd.set_y_cor(new_y_cor)
             new_heading = heading+180    # more TBD
         elif abs(new_xchg) < 1e-9:
             SlTrace.lg(f"new_xchg == 0: x_cor: {cmd.get_x_cor()}")
-            new_x_cor = cmd.get_x_cor()+cmd.get_side()
+            new_x_cor = cmd.get_x_cor()+cmd.get_side_h()
             SlTrace.lg(f"new_ychg == 0: y_cor: {cmd.get_y_cor()}")
-            new_x_cor = cmd.get_x_cor()+cmd.get_side()
-            if new_x_cor < -height/2 + boundary:
-                new_x_cor = height/2 - boundary
-            elif new_x_cor > height/2 - boundary:
-                new_x_cor = -height/2 + boundary
-            cmd.set_x_cor(new_x_cor)
+            new_x_cor = cmd.get_x_cor()+cmd.get_side_h()
+            if new_x_cor < -height/2 + radius:
+                new_x_cor = height/2 - radius
+            elif new_x_cor > height/2 - radius:
+                new_x_cor = -height/2 + radius
             new_heading = heading+180    # at more TBD
         else:
             new_theta = math.atan2(new_ychg, new_xchg)
             new_heading = math.degrees(new_theta)
-        cmd.set_heading(new_heading)
         SlTrace.lg(f"adj: new: heading({new_heading:.2f}"
                    f" xchg={new_xchg:.2f} ychg={new_ychg:.2f}")
         SlTrace.lg(f"    new loc: {cmd.get_x_cor():.1f},"
-                   f" {cmd.get_y_cor():.1f}") 
-        return True   
+                   f" {cmd.get_y_cor():.1f}")
+        cmd2 = cmd1.copy()
+        marker = cmd.new_markers[-1]
+        marker = marker.change(heading=new_heading, color=new_color,
+                               x_cor=new_x_cor, y_cor=new_y_cor)
+        marker.record()
+        cmd2.new_markers[-1] = marker
+        SlTrace.lg(f"cmd2: {cmd2}")
+        return cmd2.do_cmd()
                           
     def cmd_do_trace(self, keysym):
         self.drawer.dotrace()
@@ -572,8 +663,11 @@ class KbdCmdProc:
     def cmd_repeat(self, keysym):
         cmd = self.command_manager.get_repeat()
         if cmd is None:
-            return False 
-        
+            self.cmd_shapes('s')
+            self.cmd_shapes('s')
+            self.cmd_shapes('s')
+            self.cmd_rotate('slash')
+            cmd = self.command_manager.get_repeat()
         return self.do_cmd(cmd)
 
     def cmd_undo(self, keysym=None):
@@ -612,49 +706,85 @@ class KbdCmdProc:
                 f"Not a recognized size descripiton keysym:{keysym}")
             return False
 
-        side = self.get_side()
-        width = self.get_width()            
-        new_side = new_width = None     # Set, if changed 
-        if keysym == 'a':
-            new_side = side / len_mult
-        elif keysym == 'q':
-            new_side = side * len_mult
-        elif keysym == 'r':
-            if width <= min_width:
-                return False
-             
-            new_width = width/width_mult
-        elif keysym == 't':
-            new_width = width*width_mult
-        else:
-            raise SelectError(f"Unrecognized resize cmd: {keysym}")
         
-        cmd_last = self.last_marker_command()
         marker_last = self.last_marker()
         if marker_last is None:
-            marker = DmSize(self, side=new_side,
-                            line_width=new_width)
+            side_h = self.get_side_h()
+            side_v = self.get_side_v()
+            line_width = self.get_line_width()
+            side_h, side_v, line_width = self.size_adjust(
+                keysym, side_h, side_v, line_width)
+            marker = DmSize(self,
+                            side_h=side_h,
+                            side_v=side_v,
+                            line_width=line_width)
             cmd = DrawingCommand(f"cmd_{keysym}")
-            cmd.add_markers(marker)
+            cmd.add_marker(marker)
         else:
-            #self.undo_last_marker_command() # undo to last marker
-            ###cmd = cmd_last.reverse_copy()
-            cmd = DrawingCommand(f"cmd_{keysym}")
             marker = marker_last
+            side_h = marker.get_side_h()
+            side_v = marker.get_side_v()
+            line_width = marker.get_line_width()
+            side_h, side_v, line_width = self.size_adjust(
+                keysym, side_h, side_v, line_width)
+            cmd = DrawingCommand(f"cmd_{keysym}")
             marker = marker.use_locale(marker_last)
-            marker = marker.change(side=new_side,
-                                   line_width=new_width)
+            marker = marker.change(side_h=side_h,
+                                   side_v=side_v,
+                                   line_width=line_width)
             cmd.add_prev_markers(marker_last)
-            cmd.add_markers(marker)
+            cmd.add_marker(marker)
 
         return cmd.do_cmd()
 
     def shorten(self):
         self.cmd_size_adjust('a')
-        
+
+    def size_adjust(self, keysym, side_h, side_v, line_width):
+        """ Size adjustment
+        :keysym:
+        :side_h:
+        :side_v:
+        :line_width:
+        :returns (key_sym, side_h, side_v, line_width)
+        """
+        len_mult = 1.2
+        min_width = 2
+        width_mult = 2
+        if keysym == 'a':
+            side_h = side_h / len_mult
+            side_v = side_v / len_mult
+        elif keysym == 'q':
+            side_h = side_h * len_mult
+            side_v = side_v * len_mult
+        elif keysym == 'r':
+            if line_width <= min_width:
+                return False
+             
+            line_width = line_width/width_mult
+        elif keysym == 't':
+            line_width = line_width*width_mult
+        return side_h, side_v, line_width
+    
     def lengthen(self):
         self.cmd_size_adjust('q')
-        
+
+    def list_cmds(self, keysym=None):
+        SlTrace.lg("Command Stack(recent last)")
+        cmds = self.command_manager.command_stack.get_cmds()
+        for i, cmd in enumerate(cmds):
+            SlTrace.lg(f" {i}:{cmd}")
+
+    def list_drawn(self, keysym=None):
+        SlTrace.lg("Recorded Markers drawn:")
+        for m_id in DmMarker.recorded:
+            marker = DmMarker.recorded[m_id]
+            if marker.is_drawn():
+                SlTrace.lg(f" {marker}")
+        SlTrace.lg("Drawn tags")
+        for tag in DmMarker.drawn_t:
+            SlTrace.lg(f" tag:{tag}: {DmMarker.drawn_t[tag]}")
+                    
     def widen(self):
         self.cmd_size_adjust('t')
         
@@ -690,13 +820,13 @@ class KbdCmdProc:
 
     def cmd_set_line(self, length_str=None, width_str=None):
         """ Set line(or other shape) length, width
-        :side: length of line
+        :side_h: horizontal length of line
                 default: no change
         :line_width: width of line
                 default: no change
         """
         cmd = DrawingCommand(f"cmd_size")
-        marker = DmSize(self, side=float(length_str),
+        marker = DmSize(self, side_h=float(length_str),
                          line_width=float(width_str))
         cmd.add_marker(marker)
         return cmd.do_cmd()
@@ -715,7 +845,7 @@ class KbdCmdProc:
                 new_heading = self.get_heading() + heading_chg
                 marker = DmHeading(self, heading=new_heading)
                 cmd = DrawingCommand(f"cmd_{keysym}")
-                cmd.add_markers(marker)
+                cmd.add_marker(marker)
             else:
                 self.undo_last_marker_command() # undo to last marker
                 cmd = DrawingCommand(f"cmd_{keysym}")
@@ -723,9 +853,9 @@ class KbdCmdProc:
                 marker = marker.use_locale(marker_last)
                 new_heading = marker.get_heading()+heading_chg
                 marker = marker.change(heading=new_heading)
-                cmd.add_markers(marker)
+                cmd.add_marker(marker)
 
-        return cmd.do_cmd()
+            return cmd.do_cmd()
         
         SlTrace.report(f"Unrecognized rotate command: {keysym}")
 
@@ -739,7 +869,7 @@ class KbdCmdProc:
         if cmd_last is None:
             cmd = DrawingCommand(f"cmd_image")
             marker = self.make_image(group=group, file=file)
-            cmd.add_markers(marker)
+            cmd.add_marker(marker)
         else:
             marker_last = self.last_command_marker()
             cmd = DrawingCommand(f"cmd_image")
@@ -748,7 +878,7 @@ class KbdCmdProc:
                 if marker_last.is_visible():
                     self.cmd_undo() # Change in-place
                 marker = marker.use_locale(marker_last)
-            cmd.add_markers(marker)
+            cmd.add_marker(marker)
         return cmd.do_cmd()
 
     def cmd_do_shape(self, shape_type):
@@ -762,15 +892,14 @@ class KbdCmdProc:
             cmd = DrawingCommand(f"cmd_{shape_type}")
             marker = self.make_shape(shape=shape_type)
             marker = marker.change(color=new_color)
-            cmd.add_markers(marker)
         else:
             cmd = DrawingCommand(f"cmd_{shape_type}")
             marker = self.make_shape(shape=shape_type)
             self.cmd_undo() # Change in-place
             marker = marker.use_locale(mv_last)
             marker = marker.change(color=new_color)
-            cmd.add_markers(marker)
-        cmd = cmd.use_locale(cmd_last)  # Update for changes
+        marker = marker.use_locale(cmd=cmd_last)
+        cmd.add_marker(marker)
 
         return cmd.do_cmd()
 
@@ -836,7 +965,7 @@ class KbdCmdProc:
                                          next=True)
         if image_file is None:
             SlTrace.report(f"No image file group {group}"
-                           f" groups: {self.image_group_names}")
+                           f" groups: {group.image_group_names}")
             return False
         
         image_base = self.drawer.image_file_to_image(image_file)
@@ -888,9 +1017,9 @@ class KbdCmdProc:
         heading = self.get_heading()
         down_heading = heading - 90    # Down to next line
         theta = math.radians(down_heading)
-        side = self.get_side()
-        x_chg = side*math.cos(theta)
-        y_chg = side*math.sin(theta)
+        side_v = self.get_side_v()
+        x_chg = side_v*math.cos(theta)
+        y_chg = side_v*math.sin(theta)
         new_x = self.text_line_begin_x + x_chg
         new_y = self.text_line_begin_y + y_chg
         self.text_line_begin_y = new_y      # Update y offset
@@ -983,10 +1112,15 @@ class KbdCmdProc:
             marker = marker.change(x_cor=x_cor, y_cor=y_cor,
                                    color=new_color,
                                    heading=new_heading)
-        cmd.add_markers(marker)
+        cmd.add_marker(marker)
             
         return self.do_cmd(cmd)
 
+    def cmd_shift(self):
+        """ Keyboard shift
+        """
+        self.shift_on = not self.shift_on
+        return self.drawer.do_shift(shift_on=self.shift_on)
 
     def insert_markers(self, markers):
         """ Insert markers to display
@@ -1040,33 +1174,6 @@ class KbdCmdProc:
         :tag: text prefix
         :trace: trace flags
         """
-        
-    ''' OBSOLETE VERSION    
-    def display_update(self, cmd=None):
-        """ Update current display
-        """
-        if cmd is None:
-            cmd = self.last_command()
-        if cmd is None:
-            return          # Nothing to do
-        SlTrace.lg(f"display_update:{cmd}", "display_update")
-        self.remove_markers(cmd.prev_markers)
-        self.insert_markers(cmd.new_markers)
-        new_loc = cmd.new_loc
-        if new_loc is None:
-            cmd.set_new_loc()       # Default command new location
-        if cmd.new_loc is not None:
-            self.set_loc(cmd.new_loc)
-        if self.cmd_pointer is not None:
-            self.cmd_pointer.undraw()
-        heading = cmd.get_heading()
-        self.cmd_pointer = DmPointer(self, x_cor=cmd.new_loc[0],
-                                     y_cor=cmd.new_loc[1],
-                                     heading=heading)
-        self.set_heading(heading)
-        self.cmd_pointer.draw()
-        self.drawer.master.update()
-        '''
 
     def display_update(self, cmd=None):
         """ Update current display
@@ -1075,6 +1182,10 @@ class KbdCmdProc:
             cmd = self.last_command()
         if cmd is not None:
             SlTrace.lg(f"display_update:{cmd}", "display_update")
+            if SlTrace.trace("cmd_unrecorded"):
+                for marker in cmd.new_markers:
+                    if not marker.is_recorded():
+                        SlTrace.lg(f"cmd unrecorded: {marker}")
             self.remove_markers(cmd.prev_markers)
             self.insert_markers(cmd.new_markers)
             new_loc = cmd.get_next_loc()
@@ -1082,8 +1193,10 @@ class KbdCmdProc:
                 cmd.set_next_loc()       # Default command new location
             heading = cmd.get_heading()
             x_cor, y_cor = cmd.get_next_loc()
-            side = cmd.get_side()
-            self.set_side(side)
+            side_h = cmd.get_side_h()
+            side_v = cmd.get_side_v()
+            ###self.set_side_h(side_h)
+            ###self.set_side_v(side_v)
             copy_move = cmd.get_copy_move()
             self.set_copy_move(copy_move)
         else:
@@ -1096,6 +1209,7 @@ class KbdCmdProc:
         self.cmd_pointer = DmPointer(self, x_cor=x_cor,
                                      y_cor=y_cor,
                                      heading=heading)
+        self.cmd_pointer.record()
         self.cmd_pointer.draw()
         self.drawer.master.update()
 
@@ -1124,18 +1238,34 @@ class KbdCmdProc:
                 
 
 
-    def set_side(self, side):
-        self.side = side
+    def set_side_h(self, side):
+        self.side_h = side
 
-    def set_width(self, line_width):
+    def set_side_v(self, side):
+        self.side_v = side
+
+    def set_line_width(self, line_width):
         self.line_width = line_width
 
 
-    def set_size(self, side=None, line_width=None):
+    def set_size(self,
+                 side_h=None, side_v=None,
+                 side=None,
+                 line_width=None):
+        """ Set size
+        :side_h: horizontal size
+        :side_v: vertical size
+        :side: set both horizontal, vertical
+        """
+        if side_h is not None:
+            self.set_side_h(side_h)
+        if side_v is not None:
+            self.set_side_v(side_v)
         if side is not None:
-            self.set_side(side)
+            self.set_side_h(side)
+            self.set_side_v(side)
         if line_width is not None:
-            self.set_width(line_width)
+            self.set_line_width(line_width)
 
     def set_pen(self, pen_desc="down"):
         self.pen_desc = pen_desc
@@ -1159,10 +1289,12 @@ class KbdCmdProc:
         """
         if not self.is_drawing or force:
             self.is_drawing = True
+            self.shift_on = False       # Drawing expects lower case
+            self.drawer.do_shift(shift_on=self.shift_on)
             self.set_key_images(show=True) 
 
     def set_key_images(self, show=False):
-        if hasattr(self.drawer, "screen_Keyboard"):
+        if hasattr(self.drawer, "screen_keyboard"):
             self.drawer.screen_keyboard.set_images(show=show)
 
     def set_text_mode(self, keysym=None, force=False):
@@ -1182,23 +1314,30 @@ class KbdCmdProc:
         :y_cor: y_cor default= current y_cor
         """
         
-        if x_cor is None or x_cor == "":
-            x_cor = self.get_x_cor()
         if x_cor is str:
             x_cor = float(x_cor)
+        if x_cor is None or x_cor == "":
+            x_cor = self.get_x_cor()
         self.text_line_begin_x = x_cor
-        if y_cor is None or y_cor == "":
-            y_cor = self.get_y_cor()
         if y_cor is str:
             x_cor = float(y_cor)
+        if y_cor is None or y_cor == "":
+            y_cor = self.get_y_cor()
         self.text_line_begin_y = y_cor
         self.set_text_mode()
+        SlTrace.lg(f"set_newline({self.text_line_begin_x}"
+                   f", {self.text_line_begin_y})")
         
     def get_canvas(self):
         """ Get our working canvas
         """
         return self.drawer.get_canvas()
 
+    def get_image_file_groups(self):
+        """ Get all image file groups (DataFileGroup)
+        :returns: data groups (list of DataFileGroup)
+        """
+        return self.drawer.get_image_file_groups()
 
     def last_command(self):
         return self.command_manager.last_command()
@@ -1316,14 +1455,17 @@ class KbdCmdProc:
     
     def set_copy_move(self, copy_move):
         self.copy_move = copy_move
-        
+       
     def get_loc(self):
         return (self.get_x_cor(), self.get_y_cor())
         
-    def get_side(self):
-        return self.side
+    def get_side_h(self):
+        return self.side_h
+        
+    def get_side_v(self):
+        return self.side_v
 
-    def get_width(self):
+    def get_line_width(self):
         return self.line_width
 
     def select_print(self, tag, trace=None):
@@ -1346,7 +1488,7 @@ if __name__ == "__main__":
                 )
     kb_draw.color_current = "w"
     
-    kcp = KbdCmdProc(kb_draw)
+    kcp = kb_draw.cmd_proc
     kcp.help()
     kcp.set_loc(-300,0)
     

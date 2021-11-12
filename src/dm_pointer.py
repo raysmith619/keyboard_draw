@@ -33,10 +33,11 @@ class DmPointer(DmMarker):
     def draw(self):
         """ Draw line
         """
+        super().draw()      # Ground work
         # Use square as basis, pointer bysects square
         # from center of left vertical to center
         corners = self.get_square(x1=self.x_cor, y1=self.y_cor,
-                     color=self.color, width=self.side)
+                     color=self.color, width=self.side_h)
         x1 = (corners[0][0] + corners[3][0])/2
         y1 = (corners[0][1] + corners[3][1])/2
         x2 = (corners[0][0] + corners[1][0]

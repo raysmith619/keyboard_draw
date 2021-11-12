@@ -1,0 +1,14 @@
+_TBD.txt	05Nov2021  crs
+Things to be done for keyboard_draw
+
+Properly space letters (text)
+
+Correctly backup size change undo
+This is especially visible in clear command
+
+Change keyboard display to indicate text input.
+
+Make Shift change display case and not display "Sh".
+
+Better resize key display images.  When keyboard is expanded, the
+images should be as large as possible within the key square.

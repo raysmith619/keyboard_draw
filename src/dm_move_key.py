@@ -34,7 +34,8 @@ class DmMoveKey(DmMove):
 
     def __str__(self):
         str_str = self.__class__.__name__
-        str_str += f" {self.keysym}"
+        if hasattr(self,"keysym"):
+            str_str += f" {self.keysym}"
         str_str += f" {super().__str__()}"
         return str_str
 
