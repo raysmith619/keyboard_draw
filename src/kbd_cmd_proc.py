@@ -67,6 +67,7 @@ class KbdCmdProc:
                                'bracketleft','bracketright')),
             (self.cmd_shapes, ('s','f')),
             (self.cmd_rotate, 'slash'),
+            (self.cmd_rotate, '.'),
             (self.cmd_redo, 'y'),
             (self.cmd_repeat, 'space'),
             (self.cmd_undo, 'u'),
@@ -564,8 +565,7 @@ class KbdCmdProc:
         """ Adjust cmd movement to keep on screen
         If at an angle( not 90 deg) to edge - "bounce" off
         at -angle
-        If at 90 deg to edge "bounce" off at 90 deg but
-        displaced by size toward free side.
+        If at 90 deg to edge "bounce" off at 45 deg.
         """
         boundary = 5
         radius = cmd.get_side_h()*math.sqrt(2)/2
@@ -627,7 +627,7 @@ class KbdCmdProc:
             elif new_y_cor > height/2 - radius:
                 new_y_cor = -height/2 + radius
             
-            new_heading = heading+180    # more TBD
+            new_heading = heading+180+45    # more TBD, angle it
         elif abs(new_xchg) < 1e-9:
             SlTrace.lg(f"new_xchg == 0: x_cor: {cmd.get_x_cor()}")
             new_x_cor = cmd.get_x_cor()+cmd.get_side_h()
@@ -637,7 +637,7 @@ class KbdCmdProc:
                 new_x_cor = height/2 - radius
             elif new_x_cor > height/2 - radius:
                 new_x_cor = -height/2 + radius
-            new_heading = heading+180    # at more TBD
+            new_heading = heading+180+45    # at more TBD it
         else:
             new_theta = math.atan2(new_ychg, new_xchg)
             new_heading = math.degrees(new_theta)
@@ -706,35 +706,27 @@ class KbdCmdProc:
                 f"Not a recognized size descripiton keysym:{keysym}")
             return False
 
-        
-        marker_last = self.last_marker()
+        cmd_last = self.last_command()
+        if cmd_last is None:
+            return False        # Nothing to resize
+
+        marker_last = self.last_command_marker()
         if marker_last is None:
-            side_h = self.get_side_h()
-            side_v = self.get_side_v()
-            line_width = self.get_line_width()
-            side_h, side_v, line_width = self.size_adjust(
+            return False        # Nothing to resize
+        
+        ###if marker_last.is_visible():
+        ###    self.cmd_undo() # Change in-place
+        marker = marker_last.use_locale(marker_last)
+        side_h = marker.get_side_h()
+        side_v = marker.get_side_v()
+        line_width = marker.get_line_width()
+        side_h, side_v, line_width = self.size_adjust(
                 keysym, side_h, side_v, line_width)
-            marker = DmSize(self,
-                            side_h=side_h,
+        marker = marker.change(side_h=side_h,
                             side_v=side_v,
                             line_width=line_width)
-            cmd = DrawingCommand(f"cmd_{keysym}")
-            cmd.add_marker(marker)
-        else:
-            marker = marker_last
-            side_h = marker.get_side_h()
-            side_v = marker.get_side_v()
-            line_width = marker.get_line_width()
-            side_h, side_v, line_width = self.size_adjust(
-                keysym, side_h, side_v, line_width)
-            cmd = DrawingCommand(f"cmd_{keysym}")
-            marker = marker.use_locale(marker_last)
-            marker = marker.change(side_h=side_h,
-                                   side_v=side_v,
-                                   line_width=line_width)
-            cmd.add_prev_markers(marker_last)
-            cmd.add_marker(marker)
-
+        cmd = DrawingCommand(f"cmd_{keysym}")
+        cmd.add_marker(marker)
         return cmd.do_cmd()
 
     def shorten(self):
@@ -835,29 +827,27 @@ class KbdCmdProc:
         """ Create current shape
         :keysym: key
             / - Rotate between shapes in place
-            TBD - other direction...
+            . - other direction...
          """
         if keysym == 'slash':
             heading_chg = 45
-        
-            marker_last = self.last_visible_marker()
-            if marker_last is None:
-                new_heading = self.get_heading() + heading_chg
-                marker = DmHeading(self, heading=new_heading)
-                cmd = DrawingCommand(f"cmd_{keysym}")
-                cmd.add_marker(marker)
-            else:
-                self.undo_last_marker_command() # undo to last marker
-                cmd = DrawingCommand(f"cmd_{keysym}")
-                marker = marker_last.copy()
-                marker = marker.use_locale(marker_last)
-                new_heading = marker.get_heading()+heading_chg
-                marker = marker.change(heading=new_heading)
-                cmd.add_marker(marker)
+        elif keysym == '.':
+            heading_chg = -45
 
-            return cmd.do_cmd()
+        cmd_last = self.last_command()
+        if cmd_last is None:
+            return False        # Nothing to resize
+
+        marker_last = self.last_command_marker()
+        if marker_last is None:
+            return False        # Nothing to resize
         
-        SlTrace.report(f"Unrecognized rotate command: {keysym}")
+        marker = marker_last.use_locale(marker_last)
+        new_heading = self.get_heading() + heading_chg
+        marker = marker.change(heading=new_heading)
+        cmd = DrawingCommand(f"cmd_{keysym}")
+        cmd.add_marker(marker)
+        return cmd.do_cmd()
 
     def cmd_do_image(self, group=None, file=None):
         """ Create a specified image

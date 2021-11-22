@@ -76,7 +76,11 @@ class DmImage(DmMarker):
             return 
         SlTrace.lg(f"rotate image: {self.file}", "image")    
         if self.marker_type != "letter":
-            img = img.rotate(rotation)
+            xpt = int(.9*self.marker_image_width)
+            ypt = int(.9*self.marker_image_height)
+            xy = (xpt,ypt)
+            fill = img.getpixel(xy)
+            img = img.rotate(rotation, fillcolor=fill)
 
         SlTrace.lg(f"PhotoImage: {self.file}", "image")    
         try:

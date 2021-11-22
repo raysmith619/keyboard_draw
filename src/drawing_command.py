@@ -242,7 +242,7 @@ class DrawingCommand:
         """ Add block to remove from display
         :marker: to remove
         """
-        self.prev_markers.append(marker)
+        self.prev_markers.append(marker.copy())
         return marker
         
     def add_marker(self, markers):
@@ -257,7 +257,7 @@ class DrawingCommand:
                 SlTrace.lg(f"add_marker: already recorded:{marker}")
             else:
                 marker.record()
-            self.new_markers.append(marker)
+            self.new_markers.append(marker.copy())
         return markers
         
     def add_prev_markers(self, markers):
@@ -578,6 +578,10 @@ class DrawingCommand:
         if len(self.new_markers) > 0:
             cmd_str += " new_markers:"
             for marker in self.new_markers:
+                cmd_str += f"\n    {marker}"
+        if len(self.prev_markers) > 0:
+            cmd_str += " prev_markers:"
+            for marker in self.prev_markers:
                 cmd_str += f"\n    {marker}"
         
         return cmd_str

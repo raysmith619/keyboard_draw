@@ -529,7 +529,7 @@ def main():
     else:
         try:
             with open(hello_file, 'r') as fin:
-               hello_str = fin.read()
+                hello_str = fin.read()
         except IOError as e:
             SlTrace.report(f"Problem with hello_file:{hello_file}"
                            f"\n in {os.path.abspath(hello_file)}"
