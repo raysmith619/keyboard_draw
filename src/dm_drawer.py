@@ -25,6 +25,7 @@ class DmDrawer(SelectWindow):
                  draw_width=1500, draw_height=1000,
                  kbd_win_x=0, kbd_win_y=0,
                  kbd_win_width=350, kbd_win_height=200,
+                 side=None,
                  side_h=None,
                  side_v=None,
                  width=20,
@@ -38,6 +39,7 @@ class DmDrawer(SelectWindow):
         Note that a number of parameters, e.g., keyboard_master,
         are unused as they are for a more extensive drawing class
         (e.g. KeyboardDraw)
+        :side: shorthand for side_h and side_v
         """
         if canvas is None:
             canvas = tk.Canvas(master=master,
@@ -51,6 +53,8 @@ class DmDrawer(SelectWindow):
         self.canvas_height = draw_height   # Fudge
         self.x_cor = 0
         self.y_cor = 0
+        if side is not None:
+            side_h = side_v = side
         if side_h is None:
             side_h = 100
         self.side_h = side_h
@@ -142,7 +146,8 @@ class DmDrawer(SelectWindow):
 
 
     def set_side(self, side):
-        self.side = side
+        self.side_h = side
+        self.side_v = side
 
     def set_line_width(self, line_width):
         self.line_width = line_width

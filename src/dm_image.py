@@ -3,6 +3,8 @@
 Square marker
 """
 import os
+import sys
+
 from tkinter import *
 from PIL import ImageTk, Image
 from PIL import ImageDraw, ImageFont
@@ -69,8 +71,10 @@ class DmImage(DmMarker):
         try:
             img = img.resize((int(self.marker_image_width),
                          int(self.marker_image_height)),
-                        Image.ANTIALIAS)
+                        Image.LANCZOS)
         except:
+            tb = sys.exception().__traceback__
+            SlTrace.lg(f"resize exception:{repr(sys.exception())}")
             SlTrace.lg(f"Can't resize Image({image_key}):"
                        f"\n  {self.marker_image_width}x{self.marker_image_height}")
             return 

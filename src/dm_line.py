@@ -39,14 +39,14 @@ if __name__ == "__main__":
     dmls = []
     
     dml_base = DmLine(drawer, heading=0, color="pink", line_width=20,
-                     side=200)
+                     side_h=200)
     
     for i in range(0, nline):
         ang =  i*360/nline
         icolor = i % len(colors)
         color = colors[icolor]   
         dml = dml_base.change(heading=ang, color=color, line_width=(i+1)*2,
-                     side=(i+1)*20)
+                     side_h=(i+1)*20)
         dmls.append(dml)
         
     for dml in dmls:

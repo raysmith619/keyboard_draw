@@ -573,7 +573,7 @@ class DrawingCommand:
     def __str__(self):
         cmd_str = self.action
         cmd_str += f" dc_id:{self.dc_id}"
-        cmd_str += f" heading:{self.get_heading()}"
+        cmd_str += f" heading:{self.get_heading():.1f}"
         cmd_str += f" to={tp(self.get_next_loc())}"
         if len(self.new_markers) > 0:
             cmd_str += " new_markers:"
@@ -673,7 +673,7 @@ if __name__ == "__main__":
             marker = DmMoveKey(drawer, keysym=keysym)
             new_heading = marker.heading
             if new_heading != prev_heading:
-                marker = marker.change(side=0)
+                marker = marker.change(side_h=0, side_v=0)
             cmd = DrawingCommand(f"cmd_{keysym}")
             cmd.add_marker(marker)
             SlTrace.lg(f"cmd={cmd}", "cmd_trace")

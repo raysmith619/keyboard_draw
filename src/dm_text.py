@@ -2,6 +2,10 @@
 """
 Square marker
 """
+import tkinter as tk
+import tkinter as tk
+
+import tkinter.font
 from tkinter import *
 from PIL import ImageTk, Image
 from PIL import ImageDraw, ImageFont
@@ -43,10 +47,9 @@ class DmText(DmImage):
         :text:
         """
         self.text = text
-        text_size_h = 100
-        text_size_v = text_size_h
-        font_size = 130
-        text_font = ImageFont.truetype("arial.ttf", size=font_size)
+        text_size_h = self.side_h
+        text_size_v = self.side_v
+        text_font = ImageFont.truetype("arial.ttf", size=int(text_size_h))
         #text_font = ImageFont.truetype("courbd.ttf", size=text_size)
         #text_font = ImageFont.truetype("tahoma.ttf", size=text_size)
         text_color = self.color
@@ -57,7 +60,8 @@ class DmText(DmImage):
         ###xy = (x0,y0)
         image = Image.new("RGB", (int(text_size_h), int(text_size_v)), (255,255,255))
         draw = ImageDraw.Draw(image)      # Setup ImageDraw access
-        draw.text((10,-25), self.text, anchor="mt",
+        ###draw.text((10,-25), self.text, anchor="mt",      ###TFD
+        draw.text((text_size_h/2,text_size_v*.7), self.text, anchor="mb",
                   fill=text_color, font=text_font,
                   bg=text_bg)
         image = image.resize((int(self.side_h), int(self.side_v)))
@@ -85,7 +89,7 @@ if __name__ == "__main__":
     root = Tk()
     
     vert_change = 1.    # inclined
-    vert_change = 0     # flat - vertical change 
+    ###vert_change = 0     # flat - vertical change 
     drawer = DmDrawerImage(root)
     line_width = 2   # line thickness
     side = 100

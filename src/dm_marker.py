@@ -110,7 +110,7 @@ class DmMarker:
         if side_h is None:
             side_h = drawer.get_side_h()
         if side_v is None:
-            side_v = drawer.get_side_v()
+            side_v = side_h
         self.side_h = side_h
         self.side_v = side_v
         if line_width is None:
@@ -133,10 +133,8 @@ class DmMarker:
         str_str += f" {self.copy_move}"
         str_str += f" {self.color}"
         str_str += f" heading={self.heading:.1f}"
-        if self.side_h != self.side_v:
-            str_str += f" side_h={self.side_h:.0f} side_v={self.side_v:.0f}"
-        else:
-            str_str += f" side={self.side_h:.0f}"
+        str_str += f" side_h={self.side_h}"
+        str_str += f" side_v={self.side_v}"
         str_str += f" line_width={self.line_width:.0f}"
         str_str += f" x={self.x_cor:.0f} y={self.y_cor:.0f}"
         return str_str
@@ -242,7 +240,7 @@ class DmMarker:
         if heading is not None:
             new_obj.heading = heading
         if side_h is not None:
-            new_obj.side_h = side_v
+            new_obj.side_h = side_h
         if side_v is not None:
             new_obj.side_v = side_v
         if line_width is not None:
@@ -404,6 +402,8 @@ class DmMarker:
                 y1 = 0
         if length is None:
             length = self.side_h
+        if length is None:
+            length = 0
         self.length = length
         if heading is None:
             heading = self.heading
@@ -611,6 +611,8 @@ class DmMarker:
         """
         if side_h is None:
             side_h = self.side_h
+        if side_h is None:
+            side_h = 0
         if side_v is None:
             side_v = side_h
         theta = math.radians(rotation)
@@ -692,7 +694,7 @@ class DmMarker:
         corners = []    
         for iside in range(4):
             SlTrace.lg(f"add_line(): x1={x1:.0f}, y1={y1:.0f}"
-                       f" side_h={side_h:.0f}, side_v={side_v:.0f}, width={width:.0f}"
+                       f" side_h={side_h}, side_v={side_v}, width={width:.0f}"
                        f" heading={heading:.0f}",
                        "canvas_display")
             corners.append((x1,y1))
@@ -703,7 +705,7 @@ class DmMarker:
             x1,y1 = self.vadd(x1, y1, heading=heading, length=leng)
             heading += 90
         SlTrace.lg(f"x1={x1:.0f}, y1={y1:.0f}"
-                   f" side_h={side_h:.0f} side_v={side_v:.0f}, heading={heading:.0f} AFTER",
+                   f" side_h={side_h} side_v={side_v}, heading={heading:.0f} AFTER",
                    "canvas_display")
         return corners
 

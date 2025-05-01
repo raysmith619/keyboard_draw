@@ -83,14 +83,14 @@ if __name__ == "__main__":
     dms = []
     
     dm_base = DmCircle(drawer, heading=0, color="pink", line_width=20,
-                     side=200)
+                     side_h=200)
     beg=3
     for i in range(beg, beg+ncircle):
         ang =  i*360/ncircle
         icolor = i % len(colors)
         color = colors[icolor]   
         dm = dm_base.change(heading=ang, color=color, line_width=(i+1)*2,
-                     side=(i+1)*20)
+                     side_h=(i+1)*20)
         dms.append(dm)
         
     for dm in dms:

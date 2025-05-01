@@ -95,6 +95,7 @@ class KbdCmdProc:
             'moveto' : self.cmd_moveto,
             'narrow' : self.narrow,
             'newline' : self.cmd_newline,
+            'print'  : self.cmd_print,
             'setnewline' : self.set_newline,
             'shorten' : self.shorten,
             'text' : self.set_text_mode,
@@ -331,7 +332,7 @@ class KbdCmdProc:
         
         
     def drawing_cmd(self, keysym):
-        """ Do figure drawing command
+        r""" Do figure drawing command
         :keysym: key symbol
                 recognizes \w+\([^)]*\) as a function call
         """
@@ -364,7 +365,7 @@ class KbdCmdProc:
         return None     # keysym not found
 
     def ck_function(self, keysym):
-        """ Check for function, an process if one
+        r""" Check for function, an process if one
         function patterns:
             1. ^(\w+)\((.*)\)$
             2. =([^)]+) treated as color($1)
@@ -998,6 +999,23 @@ class KbdCmdProc:
                              y_cor=float(y_str))
         cmd.add_marker(marker)
         return cmd.do_cmd()
+        
+    def cmd_print(self, *args, sep=None):
+        """ Immediate print, no do/undo/redo
+            Always end with newline
+        :args: argument
+        """
+        sep = " " if sep is None else sep
+            
+        out_str = ""
+        first = True
+        for arg in args:
+            if not first:
+                out_str += sep
+            out_str += arg
+            out_str += sep
+        SlTrace.lg(out_str)
+        return True
         
                 
     def cmd_newline(self, lines=None):

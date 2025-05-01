@@ -20,6 +20,16 @@ from screen_kbd_flex import ScreenKbdFlex
 from image_hash import ImageHash
 from data_files import DataFiles
 
+dir_name = os.path.dirname(__file__)
+prj_dir = os.path.dirname(dir_name)
+prj_dir = os.path.abspath(prj_dir)
+image_dir = os.path.join(prj_dir, "images")
+SlTrace.lg(f"images dir: {image_dir}")
+if not os.path.isdir(image_dir):
+    SlTrace.lg(f"directory: {image_dir} does not exists")
+    exit(1)
+    
+
 class KeyboardDraw(SelectWindow):
 
     IT_FILE = "it_file"     # image from file
@@ -85,7 +95,7 @@ class KeyboardDraw(SelectWindow):
         self.canv = canvas
         self.canvas_width = draw_width    # Fudge
         self.canvas_height = draw_height   # Fudge
-        self.setup_image_access()
+        self.setup_image_access(image_dir=image_dir)
 
 
         self.canv.bind ("<ButtonPress>", self.mouse_down)
@@ -97,16 +107,33 @@ class KeyboardDraw(SelectWindow):
         canvas_width = self.canv.winfo_width()
         canvas_height = self.canv.winfo_height()
         x_start = int(-canvas_width/2 + side)
-        y_start = int(canvas_height/2 - side)
+        y_start = int(canvas_height/2 + 4*side)    ### ??? Fudge
         side = self.side
-        width = self.current_width
+        width = self.draw_width
+        height = self.draw_height
         ostuff_x = x_start + side
         ostuff_y = y_start - 6*side
         hi_stuff_x = ostuff_x+5*side
         hi_stuff_y = ostuff_y +1*side
         hi_side = side/5
             
-        if hello_drawing_str == "BUILTIN":
+        if hello_drawing_str == "TESTX":
+            tx = 0    # Test x dist
+            ty = 0
+            x0 = -750; y0 = 750
+            x_end = x0 + tx
+            y_end = y0 + ty
+            hello_drawing_str = f"""
+            print(===============================)
+            print(x0={x0},y0={y0})
+            moveto({x0},{y0});e;x;END;
+            
+            print(x_end={x_end},y_end={y_end})
+            moveto({x_end},{y_end});e;y;END;
+            print(===============================)
+            """
+            
+        elif hello_drawing_str == "BUILTIN":
             hello_drawing_str = f"""
             # Beginning screen pattern
             # Add in Family
@@ -279,7 +306,7 @@ class KeyboardDraw(SelectWindow):
             self.ifh.add_group(name, group_dir=group_dir)
                 
         SlTrace.lg("Image Files")
-        data_files_dir="../../resource_lib/images/animals"
+        data_files_dir = os.path.join(image_dir, "animals")
         image_files_dir = os.path.abspath(data_files_dir)
         if not os.path.exists(image_files_dir):
             SlTrace.lg(f'__file__:{__file__}')
@@ -405,7 +432,7 @@ class KeyboardDraw(SelectWindow):
         return self.cmd_proc.do_key(key, **kwargs)
     
     def do_keys(self, keystr):
-        """ Do action based on keystr
+        r""" Do action based on keystr
             semicolon or newline used as separators
             Empty areas between separators are ignored
             lines starting with # are printed but removed
@@ -502,6 +529,7 @@ def main():
     data_dir = "../data"
     trace = ""
     hello_str = None
+    hello_str = "TESTX"     # positioning test
     hello_file = "keyboard_draw_hello.txt"
     hello_file = "hello_family.txt"
     parser = argparse.ArgumentParser()
