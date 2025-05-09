@@ -17,6 +17,7 @@ from command_manager import CommandManager
 from drawing_command import DrawingCommand
 from dm_attributes import DmAttributes
 from dm_color import DmColor
+from dm_dot import DmDot
 from dm_heading import DmHeading
 from dm_image import DmImage
 from dm_line import DmLine
@@ -36,7 +37,13 @@ from _operator import index
 from data_files import DataFiles, DataFileGroup
 
 class KbdCmdProc:
+    CM_COPY = "cm_copy"
+    CM_MOVE = "cm_move"
+    CM_GOTO = "cm_goto"
     
+    key2change_mode = {"i": CM_COPY,
+                       "o": CM_MOVE,
+                       "p": CM_GOTO}
     def __init__(self, drawer):
         self.drawer = drawer
         self.command_manager = CommandManager(self)
@@ -47,6 +54,7 @@ class KbdCmdProc:
         self.shift_on = False   # Shifted == True
         """ Translation (partial) from key to keysym
         """
+        self.change_mode = KbdCmdProc.CM_COPY
         self.key2sym = {
             ' ' :"space",
             '=' : "equal",
@@ -65,9 +73,10 @@ class KbdCmdProc:
             (self.cmd_help, 'h'),
             (self.cmd_images, ('j','k','l',
                                'bracketleft','bracketright')),
+            (self.cmd_set_change_mode, ('i', 'o', 'p')),
             (self.cmd_shapes, ('s','f')),
             (self.cmd_rotate, 'slash'),
-            (self.cmd_rotate, '.'),
+            (self.cmd_rotate, 'period'),
             (self.cmd_redo, 'y'),
             (self.cmd_repeat, 'space'),
             (self.cmd_undo, 'u'),
@@ -88,6 +97,7 @@ class KbdCmdProc:
         self.fun_by_name = {
             'color' : self.cmd_set_color,
             'drawing' : self.set_drawing_mode,
+            'dot' :     self.cmd_dot,
             'image_file' : self.cmd_image_file,
             'lengthen' : self.lengthen,
             'line' : self.cmd_set_line,
@@ -203,8 +213,10 @@ class KbdCmdProc:
             Right, Left, Up, Down - do motions
             Return - go to next line
         """
-        SlTrace.lg(f"text_cmd({keysym})")
-        kbs = keysym.lower()
+        SlTrace.lg(f"text_cmd({keysym})", "kbd_cmds")
+        kbs = keysym
+        if len(kbs) > 1:
+            kbs = kbs.lower()    # cmds are case insensitive
         if kbs == "space":   # Support symbolic
             keysym = " "
             
@@ -553,10 +565,10 @@ class KbdCmdProc:
         canvas = self.get_canvas()
         width = canvas.winfo_width()
         height = canvas.winfo_height()
-        if (x < -width/2 + radius + boundary -radius 
-             or x > width/2 - radius - boundary
-             or y < -height/2 + radius + boundary - radius
-             or y > height/2 - radius - boundary):
+        if (x < radius + boundary
+             or x > width - radius - boundary
+             or y < radius + boundary
+             or y > height - radius - boundary):
             SlTrace.lg(f"is_on_edge {tp((x,y))}: {cmd}")
             return True 
         
@@ -669,6 +681,11 @@ class KbdCmdProc:
             self.cmd_shapes('s')
             self.cmd_rotate('slash')
             cmd = self.command_manager.get_repeat()
+        cmd_last = self.last_command()
+        if cmd_last is not None:
+            change_mode = cmd_last.get_change_mode()
+            if change_mode == KbdCmdProc.CM_MOVE:
+                cmd_last.undo()
         return self.do_cmd(cmd)
 
     def cmd_undo(self, keysym=None):
@@ -691,6 +708,18 @@ class KbdCmdProc:
         cmd.add_marker(marker)
         return cmd.do_cmd()
 
+    def cmd_set_change_mode(self, keysym):
+        """ Set change mode copy, move, go which controls the
+        change made by most movement, adjustment, or selection
+        commands
+        :keysym: i - copy - create copy at new location
+                o - move - move object to new location
+                           (erasing current location)
+                p - goto - go to new location but no obj created nor moved
+        """
+        self.change_mode = KbdCmdProc.key2change_mode[keysym]
+        """ TBD - adjust key displays """
+        
     def cmd_size_adjust(self, keysym):
         """ Adjust marker size
             a - reduce length
@@ -792,6 +821,14 @@ class KbdCmdProc:
         marker = DmColor(self, color=color)
         cmd.add_marker(marker)
         return cmd.do_cmd()
+           
+    def cmd_dot(self):
+        """ Make dot at current location
+        """
+        cmd = DrawingCommand(f"cmd_dot")
+        marker = DmDot(self)
+        cmd.add_marker(marker)
+        return cmd.do_cmd()
 
     def cmd_set_marker_type(self, marker_type=None):
         """ Set marker type
@@ -831,9 +868,9 @@ class KbdCmdProc:
             . - other direction...
          """
         if keysym == 'slash':
-            heading_chg = 45
-        elif keysym == '.':
             heading_chg = -45
+        elif keysym == 'period':
+            heading_chg = 45
 
         cmd_last = self.last_command()
         if cmd_last is None:
@@ -999,7 +1036,27 @@ class KbdCmdProc:
                              y_cor=float(y_str))
         cmd.add_marker(marker)
         return cmd.do_cmd()
-        
+
+    
+    def moveto(self, x,y):
+        """ Move to location
+        :x: x in pixels
+        :y: y in pixels
+        """
+        cmd = DrawingCommand(f"cmd_move")
+        marker = DmPosition(self,
+                             x_cor=x,
+                             y_cor=y)
+        cmd.add_marker(marker)
+        return cmd.do_cmd()
+
+    
+    def letter_string(self, string):
+        """ Process string of letters(characters) no special
+        """    
+        for ch in string:
+            self.text_cmd(ch)
+            
     def cmd_print(self, *args, sep=None):
         """ Immediate print, no do/undo/redo
             Always end with newline
@@ -1023,7 +1080,7 @@ class KbdCmdProc:
         force text mode
         """
         heading = self.get_heading()
-        down_heading = heading - 90    # Down to next line
+        down_heading = heading + 90    # Down to next line
         theta = math.radians(down_heading)
         side_v = self.get_side_v()
         x_chg = side_v*math.cos(theta)
@@ -1084,15 +1141,15 @@ class KbdCmdProc:
             1 2 4
               0
         """
-        dig2head = {'6':0, '9':45, '8':90,
-            '7':135, '4':180, '1':225,
-            '2':270, '3':315, '6':0,
+        dig2head = {'6':0, '9':315, '8':270,
+            '7':225, '4':180, '1':135,
+            '2':90, '3':45, '6':0,
             }
         cur_heading = self.get_heading()
         if keysym == '0':
-           new_heading = cur_heading - 45
+           new_heading = cur_heading + 45
         elif keysym == '5':
-            new_heading = cur_heading + 45 
+            new_heading = cur_heading - 45 
         elif keysym not in dig2head:
             SlTrace.report(f"{keysym} is not a recogized new direction")
             return False 
@@ -1100,6 +1157,7 @@ class KbdCmdProc:
             new_heading = dig2head[keysym]        
 
         marker_last = self.last_visible_marker()
+        cmd_last = self.last_command()
         cmd = DrawingCommand(f"cmd_{keysym}")
         if marker_last is None:
             new_color = self.get_next("color")
@@ -1121,7 +1179,12 @@ class KbdCmdProc:
                                    color=new_color,
                                    heading=new_heading)
         cmd.add_marker(marker)
-            
+        if self.change_mode == KbdCmdProc.CM_COPY:
+            pass                # default - add new copy
+        elif self.change_mode == KbdCmdProc.CM_MOVE:
+            if cmd_last is not None:
+                cmd_last.undo()     # New is a moved copy
+                
         return self.do_cmd(cmd)
 
     def cmd_shift(self):
@@ -1333,8 +1396,29 @@ class KbdCmdProc:
             y_cor = self.get_y_cor()
         self.text_line_begin_y = y_cor
         self.set_text_mode()
-        SlTrace.lg(f"set_newline({self.text_line_begin_x}"
-                   f", {self.text_line_begin_y})")
+        SlTrace.lg(f"set_newline({self.text_line_begin_x = }"
+                   f", {self.text_line_begin_y = })")
+
+    def setnewline(self, x_cor=None, y_cor=None, heading=None):
+        """ Set curret location as line beginning
+        to be used by jump_to_next_line
+        set to text mode if not alreaty there
+        :x_cor: x_cor default= current x_cor
+        :y_cor: y_cor default= current y_cor
+        :heading: text direction default: 0.
+        """
+        if heading is None:
+            heading = 0.
+        self.set_heading(heading)
+        if x_cor is None:
+            x_cor = self.get_x_cor()
+        self.text_line_begin_x = x_cor
+        if y_cor is None:
+            y_cor = self.get_y_cor()
+        self.text_line_begin_y = y_cor
+        self.set_text_mode()
+        SlTrace.lg(f"set_newline({self.text_line_begin_x = }"
+                   f", {self.text_line_begin_y = })")
         
     def get_canvas(self):
         """ Get our working canvas

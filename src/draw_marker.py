@@ -18,6 +18,7 @@ class DrawMarker:
     DT_SQUARE = "dt_square"
     DT_TRIANGLE = "dt_triangle"
     DT_CIRCLE = "dt_circle"
+    DT_DOT = "dt_dot"
     DT_IMAGE = "dt_image"
     DT_TEXT = "dt_text"     # letter but possibley more
     DT_POINTER = "dt_pointer"   # turtle pointer
@@ -62,7 +63,7 @@ class DrawMarker:
         self.y_cor = y_cor
         self.tags = []          # Keep canvas tags, if any
         self.images = []          # Keep images, if any
-        self.update_tur_scale()
+        ####self.update_tur_scale()
     
     def __str__(self):
         str_str = self.__class__.__name__
@@ -361,7 +362,7 @@ class DrawMarker:
             :kwargs: additional arguments
             """
             canvas = self.get_canvas()
-            x,y = self.tur_scale(to_scale, [x, y])
+            ####x,y = self.tur_scale(to_scale, [x, y])
             image_tag = canvas.create_image(x, y, image=image,
                                             **kwargs)
             self.tags.append(image_tag)
@@ -438,7 +439,7 @@ class DrawMarker:
         :kwargs: additional parameters
         """
         canvas = self.get_canvas()
-        x, y = self.tur_scale(to_scale, (x,y))
+        ####x, y = self.tur_scale(to_scale, (x,y))
         tag = canvas.create_image(x,y, image=image,
                                   anchor=SE, **kwargs)
         SlTrace.lg(f"create_image: x={x:.0f}, y={y:.0f} tag={tag}")
@@ -449,7 +450,7 @@ class DrawMarker:
         """
         canvas = self.get_canvas()
         SlTrace.lg(f"create_line: x1={x1:.0f}, y1={y1:.0f}, x2={x2:.0f} y2={y2:.0f} tag=?")
-        x1, y1, x2, y2 = self.tur_scale(True, (x1, y1, x2, y2))
+        ####x1, y1, x2, y2 = self.tur_scale(True, (x1, y1, x2, y2))
         tag = canvas.create_line(x1,y1,x2,y2, **kwargs)
         self.tags.append(tag)
         SlTrace.lg(f"create_line: x1={x1:.0f}, y1={y1:.0f}, x2={x2:.0f} y2={y2:.0f} tag={tag}")
@@ -458,7 +459,7 @@ class DrawMarker:
         """ link to tkinter create_oval
         """
         canvas = self.get_canvas()
-        x1, y1, x2, y2 = self.tur_scale(True, (x1, y1, x2, y2))
+        ####x1, y1, x2, y2 = self.tur_scale(True, (x1, y1, x2, y2))
         tag = canvas.create_oval(x1,y1,x2,y2, **kwargs)
         self.tags.append(tag)
 
@@ -466,7 +467,7 @@ class DrawMarker:
         """ link to tkinter create_line
         """
         canvas = self.get_canvas()
-        ptxy = self.tur_scale(True, ptxy)
+        ####ptxy = self.tur_scale(True, ptxy)
         tag = canvas.create_polygon(*ptxy, **kwargs)
         self.tags.append(tag)
         ptxy_str = ""

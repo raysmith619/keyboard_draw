@@ -45,6 +45,7 @@ class DmMarker:
     DT_SQUARE = "dt_square"
     DT_TRIANGLE = "dt_triangle"
     DT_CIRCLE = "dt_circle"
+    DT_DOT = "dt_dot"
     DT_IMAGE = "dt_image"
     DT_SIZE = "dt_size"
     DT_TEXT = "dt_text"     # letter but possibley more
@@ -123,7 +124,7 @@ class DmMarker:
         if y_cor is None:
             y_cor = drawer.get_y_cor()
         self.y_cor = y_cor
-        self.update_tur_scale()
+        ####self.update_tur_scale()
         self.drawn = None       # drawn artifacts
         SlTrace.lg(f"new {self}", "new_marker")
     
@@ -720,7 +721,7 @@ class DmMarker:
             :kwargs: additional arguments
             """
             canvas = self.get_canvas()
-            x,y = self.tur_scale(to_scale, [x, y])
+            ####x,y = self.tur_scale(to_scale, [x, y])
             image_tag = canvas.create_image(x, y, image=image,
                                             **kwargs)
             self.add_tag(image_tag)
@@ -798,7 +799,7 @@ class DmMarker:
         :kwargs: additional parameters
         """
         canvas = self.get_canvas()
-        x, y = self.tur_scale(to_scale, (x,y))
+        ####x, y = self.tur_scale(to_scale, (x,y))
         tag = canvas.create_image(x,y, image=image,
                                   anchor=SW, **kwargs)
         SlTrace.lg(f"create_image: x={x:.0f}, y={y:.0f} tag={tag}",
@@ -811,7 +812,7 @@ class DmMarker:
         canvas = self.get_canvas()
         SlTrace.lg(f"create_line: x1={x1:.0f}, y1={y1:.0f}"
                    f", x2={x2:.0f} y2={y2:.0f} tag=?", "canvas_display")
-        x1, y1, x2, y2 = self.tur_scale(True, (x1, y1, x2, y2))
+        ####x1, y1, x2, y2 = self.tur_scale(True, (x1, y1, x2, y2))
         tag = canvas.create_line(x1,y1,x2,y2, **kwargs)
         SlTrace.lg(f"create_line: tag: {tag} {x1, y1, x2, y2}", "canvas_display")
         self.add_tag(tag)
@@ -822,7 +823,10 @@ class DmMarker:
         """ link to tkinter create_oval
         """
         canvas = self.get_canvas()
-        x1, y1, x2, y2 = self.tur_scale(True, (x1, y1, x2, y2))
+        ####x1, y1, x2, y2 = self.tur_scale(True, (x1, y1, x2, y2))
+        if "color" in kwargs:
+            kwargs["fill"] = kwargs["color"]
+            del(kwargs["color"])
         tag = canvas.create_oval(x1,y1,x2,y2, **kwargs)
         self.add_tag(tag)
 
@@ -830,7 +834,7 @@ class DmMarker:
         """ link to tkinter create_line
         """
         canvas = self.get_canvas()
-        ptxy = self.tur_scale(True, ptxy)
+        ####ptxy = self.tur_scale(True, ptxy)
         tag = canvas.create_polygon(*ptxy, **kwargs)
         self.add_tag(tag)
         ptxy_str = ""
@@ -880,7 +884,7 @@ class DmMarker:
         """
         SlTrace.lg(f"draw: {self}", "draw")
         if not self.is_recorded():
-            SlTrace.lg(f"draw of unrecorded {self}")
+            SlTrace.lg(f"draw of unrecorded {self}", "recorded")
         if self.is_drawn():
             SlTrace.lg(f"draw: of already drawn {self}")
         """ Don' change defaults
@@ -899,7 +903,7 @@ class DmMarker:
         SlTrace.lg(f"undraw: {self}", "undraw")
         
         if not self.is_recorded():
-            SlTrace.lg(f"undraw of unrecorded {self}")
+            SlTrace.lg(f"undraw of unrecorded {self}", "recorded")
         if not self.is_drawn():
             SlTrace.lg(f"undraw: of not drawn:{self}")
         if SlTrace.trace("tags"):

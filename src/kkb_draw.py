@@ -1,6 +1,6 @@
-#keyboard_draw.py    12Dec2020  crs
+#kbd_draw.py    12Dec2020  crs
 """
-Drawing on turtle window, using keyboard
+Draw, given a python string
 """
 import os
 import sys
@@ -11,7 +11,6 @@ import argparse
 from select_trace import SlTrace
 from select_window import SelectWindow
 from kbd_cmd_proc import KbdCmdProc
-from keyboard_draw_exec import KeyboardDrawExec
 
 """ Using ScreenKbd
 from screen_kbd import ScreenKbd
@@ -31,47 +30,16 @@ if not os.path.isdir(image_dir):
     exit(1)
     
 
-class KeyboardDraw(SelectWindow):
+class KbdDraw:
 
     IT_FILE = "it_file"     # image from file
     IT_TEXT = "it_text"     # image generated 
     
-    def __init__(self, master, title=None,
-                 kbd_master=None, canvas=None,
-                 draw_x=20, draw_y=20,
-                 draw_width=1500, draw_height=1000,
-                 kbd_win_x=0, kbd_win_y=0,
-                 kbd_win_width=350, kbd_win_height=200,
-                 side=100,
-                 width=20,
-                 hello_drawing_str=None,
-                 with_screen_kbd=True,
-                 show_help=False,
-                 **kwargs
+    def __init__(self,
+                 keyboard=None,
                  ):
         """ Keyboard Drawing tool
-        :master: master
-        :kbd_master: screen keyboard master, if present
-                    must be grid managed
-                    default: create Toplevel
-        :draw_width: drawing window width default: 1500 pixels
-        :draw_height: drawing window height default: 1000
-        :kbd_win_x: screen keyboard initial x
-        :kbd_win_y: screen keyboard initial y
-        :kbd_win_width: screen keyboard width
-        :kbd_win_height: screen keyboard height
-        :canvas: base canvas
-                default: create 500x500
-        :side: starting line side length
-            default: 100
-        :width: starting line width
-                default: 20
-        :hello_drawing_str: Beginning display command string
-                default: HI...
-        :with_screen_kbd: Has screen keyboard control
-                    default: True
-        :show_help: Show help text at beginning
-                    default: False
+        :keyboard: display
         """
         control_prefix = "KbdDraw"
         self.x_cor = 0 
@@ -80,46 +48,7 @@ class KeyboardDraw(SelectWindow):
         self.color_current = "red"
         self.color_changing = True
         self.color_index = 0
-        super().__init__(master,title=title,
-                         control_prefix=control_prefix,
-                         **kwargs)
-
-        self.cmd_pointer = None     # marker pointer
-        
-        if canvas is None:
-            canvas = tk.Canvas(master=master,
-                               width=draw_width, height=draw_height,
-                               bd=2, bg="white", relief="ridge")
-            canvas.pack(expand=True, fill=tk.BOTH)
-        self.draw_width = draw_width
-        self.draw_height = draw_height
-        self.canv = canvas
-        self.canvas_width = draw_width    # Fudge
-        self.canvas_height = draw_height   # Fudge
-        self.setup_image_access(image_dir=image_dir)
-
-
-        self.canv.bind ("<ButtonPress>", self.mouse_down)
-        self.cmd_proc = KbdCmdProc(self)
-        
-        self.master = master
-        self.side = side
-        self.current_width = width
-        self.canv.update()
-        canvas_width = self.canv.winfo_width()
-        canvas_height = self.canv.winfo_height()
-        SlTrace.lg(f"{canvas_width = } {canvas_height = }")
-        x_start = side
-        y_start = 2*side
-        SlTrace.lg(f"{x_start = } {y_start = }")
-        side = self.side
-        width = self.draw_width
-        height = self.draw_height
-        ostuff_x = x_start + side
-        ostuff_y = y_start - 6*side
-        hi_stuff_x = ostuff_x+5*side
-        hi_stuff_y = ostuff_y +1*side
-        hi_side = side/5
+    
             
         if hello_drawing_str == "TESTX":
             tx = width    # Test x dist
@@ -143,21 +72,7 @@ class KeyboardDraw(SelectWindow):
             hello_drawing_str += f"""
             print(===============================)
             """
-        elif hello_drawing_str == "TESTY":
             
-            self.top_y = 300                    # Provide access to KeyboardDrawExce exec string
-            self.left_x = 300
-            self.bottom_y = self.canvas_height - self.top_y
-            self.right_x = self.canvas_width - self.left_x
-            exec_str = """
-moveto(left_x, top_y); letter_string("w")
-moveto(right_x, top_y); letter_string("x")
-moveto(right_x, bottom_y); letter_string("y")
-moveto(left_x, bottom_y); letter_string("z")
-            """
-            kbe = KeyboardDrawExec(k_draw=self, string=exec_str)
-            kbe.run()
-            hello_drawing_str = None
         elif hello_drawing_str == "BUILTIN":
             hello_drawing_str = f"""
             # Beginning screen pattern
@@ -246,8 +161,7 @@ moveto(left_x, bottom_y); letter_string("z")
         self.custom_colors = []
 
         self.moves_canvas_tags = []  # Init for canvas part of draw_undo
-        if self.hello_drawing_str is not None:
-            self.clear_all()            # Setup initial settings
+        self.clear_all()            # Setup initial settings
         
         
         
@@ -263,9 +177,9 @@ moveto(left_x, bottom_y); letter_string("z")
                                             win_width=kbd_win_width,
                                             win_height=kbd_win_height,
                                               title="Let's Make a Drawing!")
+            self.screen_keyboard.to_top()   # Just earlier to see problems
+            self.do_keys(self.hello_drawing_str)
             self.screen_keyboard.to_top()
-            if self.hello_drawing_str is not None:
-                self.do_keys(self.hello_drawing_str)
         if show_help:
             self.help()
         
@@ -449,15 +363,7 @@ moveto(left_x, bottom_y); letter_string("z")
         """ Print select select state
         """
         """TBD"""
-
-    def string_list(self, string):
-        """ Do keys, list as typed
-        No special keysymbols  action
-        :string: list of characters
-        """
-        for ch in string:
-            self.do_key(ch)
-                    
+        
     def do_key(self, key, **kwargs):
         """ Process key by
         calling keyfun, echoing key
@@ -544,34 +450,6 @@ moveto(left_x, bottom_y); letter_string("z")
         y_coor = int(canvas_height/2 - y_cor)        # canvas increases downward
         return (x_coor, y_coor)
 
-    """ 
-    Links to cmd_proc
-    """
-    
-    def moveto(self, x,y):
-        """ Move to location
-        :x: x in pixels
-        :y: y in pixels
-        """
-        self.cmd_proc.moveto(x, y)
-    
-    def letter_string(self, string):
-        """ Process string of letters(characters) no special
-        """    
-        self.cmd_proc.letter_string(string)
-
-    def setnewline(self, x_cor=None, y_cor=None, heading=None):
-        """ Set curret location as line beginning
-        to be used by jump_to_next_line
-        set to text mode if not alreaty there
-        :x_cor: x_cor default= current x_cor
-        :y_cor: y_cor default= current y_cor
-        :heading: text direction default: 0
-        """
-        if heading is None:
-            heading = 0.
-        self.cmd_proc.setnewline(x_cor=x_cor, y_cor=y_cor, heading=heading)        
-        
     def cmd_clear_all(self):
         """ Clear screen
         """
@@ -595,8 +473,7 @@ def main():
     trace = ""
     hello_str = None
     hello_str = "TESTX"     # positioning test
-    hello_str = "TESTY"     # positioning test
-    #hello_str = "BUILTIN"
+    hello_str = "BUILTIN"
     hello_file = "keyboard_draw_hello.txt"
     hello_file = "hello_family.txt"
     parser = argparse.ArgumentParser()

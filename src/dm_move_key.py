@@ -22,9 +22,9 @@ class DmMoveKey(DmMove):
         super().__init__(drawer, draw_type=draw_type, **kwargs)
         self.keysym = keysym
         if self.keysym == "Up":
-            self.heading=90
-        elif self.keysym == "Down":
             self.heading=270
+        elif self.keysym == "Down":
+            self.heading=90
         elif self.keysym == "Left":
             self.heading=180
         elif self.keysym == "Right":
