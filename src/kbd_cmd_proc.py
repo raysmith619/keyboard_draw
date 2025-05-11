@@ -288,10 +288,15 @@ class KbdCmdProc:
         """
         return self.drawer.get_image_file(group=group, file=file,
                                           next=next)
+    def image_file(self, group=None, file=None):
+        """ create marker at current location, heading
+        :group: group name (e.g. animals, family)
+        :name: first file in group which contains the name string
+        """
+        self.cmd_image_file(group=group, file=file)
 
     def cmd_image_file(self, group=None, file=None):
         """ create marker at current location, heading
-        from group of name
         :group: group name (e.g. animals, family)
         :name: first file in group which contains the name string
         """
@@ -1073,7 +1078,12 @@ class KbdCmdProc:
             out_str += sep
         SlTrace.lg(out_str)
         return True
-        
+                
+    def newline(self):
+        """ Move to beginning of next line
+        force text mode
+        """
+        self.cmd_newline()
                 
     def cmd_newline(self, lines=None):
         """ Move to beginning of next line, invisibly
@@ -1081,10 +1091,11 @@ class KbdCmdProc:
         """
         heading = self.get_heading()
         down_heading = heading + 90    # Down to next line
-        theta = math.radians(down_heading)
-        side_v = self.get_side_v()
-        x_chg = side_v*math.cos(theta)
-        y_chg = side_v*math.sin(theta)
+        theta = math.radians(heading)
+        side_h = self.get_side_h()
+        side_v = 1.5*self.get_side_v()    # Text size h,2v
+        x_chg = side_h*math.sin(theta)
+        y_chg = side_v*math.cos(theta)
         new_x = self.text_line_begin_x + x_chg
         new_y = self.text_line_begin_y + y_chg
         self.text_line_begin_y = new_y      # Update y offset

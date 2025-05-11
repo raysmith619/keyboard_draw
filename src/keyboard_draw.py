@@ -120,6 +120,10 @@ class KeyboardDraw(SelectWindow):
         hi_stuff_x = ostuff_x+5*side
         hi_stuff_y = ostuff_y +1*side
         hi_side = side/5
+        self.top_y = 300                    # Provide access to KeyboardDrawExce exec string
+        self.left_x = 300
+        self.bottom_y = self.canvas_height - self.top_y
+        self.right_x = self.canvas_width - self.left_x
             
         if hello_drawing_str == "TESTX":
             tx = width    # Test x dist
@@ -145,15 +149,29 @@ class KeyboardDraw(SelectWindow):
             """
         elif hello_drawing_str == "TESTY":
             
-            self.top_y = 300                    # Provide access to KeyboardDrawExce exec string
-            self.left_x = 300
-            self.bottom_y = self.canvas_height - self.top_y
-            self.right_x = self.canvas_width - self.left_x
             exec_str = """
-moveto(left_x, top_y); letter_string("w")
-moveto(right_x, top_y); letter_string("x")
-moveto(right_x, bottom_y); letter_string("y")
-moveto(left_x, bottom_y); letter_string("z")
+            moveto(left_x, top_y); letter_string("w")
+            moveto(right_x, top_y); letter_string("x")
+            moveto(right_x, bottom_y); letter_string("y")
+            moveto(left_x, bottom_y); letter_string("z")
+            """
+            kbe = KeyboardDrawExec(k_draw=self, string=exec_str)
+            kbe.run()
+            hello_drawing_str = None
+        elif hello_drawing_str == "BUILTIN":
+            exec_str = """
+            # Beginning screen pattern
+            # Add in Family
+            #minus
+            #line({side},{width})        # Set side, width
+            moveto(left_x,top_y)
+            #plus
+            setnewline(); letter_string("Family")
+            f = "family"
+            newline(); letter_string("Alex "); image_file(f, "alex")
+            newline(); letter_string("Declan "); image_file(f, "declan")
+            newline(); letter_string("Avery "); image_file(f, "avery")
+            newline(); letter_string("Charlie "); image_file(f, "charlie")
             """
             kbe = KeyboardDrawExec(k_draw=self, string=exec_str)
             kbe.run()
@@ -360,6 +378,19 @@ moveto(left_x, bottom_y); letter_string("z")
         self.photo_images = {}      # Keeping references
         self.marker_image_tags = []
         self.image_chosen = None 
+
+
+    def list_string(self, string):
+        """ List string, given line numbers
+        :string: string to be listed with line numbers
+        :returns: string with line numbered lines
+        """
+        out_str = ""
+        lines = string.split("\n")
+        for i, line in enumerate(lines):
+            out_str += f"{i+1:>2d}: {line}\n"
+        return out_str
+
             
     def ignore_key(self):
         """ ignore key
@@ -554,11 +585,24 @@ moveto(left_x, bottom_y); letter_string("z")
         :y: y in pixels
         """
         self.cmd_proc.moveto(x, y)
-    
+
+    def image_file(self, group=None, file=None):
+        """ create marker at current location, heading
+        :group: image directory
+        :group: file base name
+        """
+        self.cmd_proc.image_file(group=group, file=file)    # legacy name
+            
     def letter_string(self, string):
         """ Process string of letters(characters) no special
         """    
         self.cmd_proc.letter_string(string)
+                
+    def newline(self):
+        """ Move to beginning of next line
+        force text mode
+        """
+        self.cmd_proc.newline()
 
     def setnewline(self, x_cor=None, y_cor=None, heading=None):
         """ Set curret location as line beginning
@@ -596,7 +640,7 @@ def main():
     hello_str = None
     hello_str = "TESTX"     # positioning test
     hello_str = "TESTY"     # positioning test
-    #hello_str = "BUILTIN"
+    hello_str = "BUILTIN"
     hello_file = "keyboard_draw_hello.txt"
     hello_file = "hello_family.txt"
     parser = argparse.ArgumentParser()

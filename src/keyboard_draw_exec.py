@@ -11,16 +11,34 @@ from file_string_exec import FileStringExec
 
 # command functions
 kbd_draw = None         # Set fom KeyboardDrawExec.__init__()
+
+
+
+def image_file(group=None, file=None):
+    """ create marker at current location, heading
+    :group: image directory
+    :group: file base name
+    """
+    SlTrace.lg(f"image_file(group={group}, file={file})", "exec_cmds")
+    kbd_draw.image_file(group=group, file=file)    # legacy name
+
 def moveto(*args, **kwargs):
-    SlTrace.lg(f"moveto({args = }, {kwargs=})")
+    SlTrace.lg(f"moveto({args = }, {kwargs=})", "exec_cmds")
     kbd_draw.moveto(*args)
+                
+def newline():
+    """ Move to beginning of next line
+    force text mode
+    """
+    SlTrace.lg(f"newline()", "exec_cmds")
+    kbd_draw.newline()
 
 def letter_string(*args, **kwargs):
-    SlTrace.lg(f"letter_string({args = }, {kwargs=})")
+    SlTrace.lg(f"letter_string({args = }, {kwargs=})", "exec_cmds")
     kbd_draw.letter_string(*args)
 
 def setnewline(x_cor=None, y_cor=None, heading=None):
-    SlTrace.lg(f"setnewline({x_cor = }, {y_cor=})")
+    SlTrace.lg(f"setnewline({x_cor = }, {y_cor=})", "exec_cmds")
     kbd_draw.setnewline(x_cor=x_cor, y_cor=y_cor, heading=heading)
 
 class KeyboardDrawExec(FileStringExec):

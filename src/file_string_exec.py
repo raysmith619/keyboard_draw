@@ -22,6 +22,20 @@ class FileStringExec:
         Only ONE of 
         :file: file containing command
         :string: string containing command
+            If present, adjusts string to indentation of first nonempty line
+            facilitating readable exec script entry.
+                e.g.:
+                    ^-left edge
+                    
+                        if foo:
+                            bar  = stuff
+                        more()
+                    goes to:
+                    ^-left edge
+                    if foo:
+                        bar  = stuff
+                    more()
+                    
         :prefix: Optional string to prefix command string
         :end: Optional string to append to command string
         :globals: globals, if present, placed in exec globals arg
@@ -79,13 +93,54 @@ class FileStringExec:
             self.string = string
         if self.string is None:
             raise SelectError(f"")
-    
+        self.string = self.left_align(self.string)
+
+    def left_align(self, string):
+        """ Shift multi-line string to left edge
+            ASSUMES only spaces in leading whitespace
+        :string: multiline python code-like string
+        """
+        lines = string.split('\n')
+        shifted_string = ""
+        if len(lines) == 0:
+            return lines
+        
+        nleadsp = None      # Set when we find leading spaces
+        for line in lines:
+            if len(line) == 0:
+                shifted_string += "\n"      # Empty line
+                continue
+            
+            if nleadsp is None:
+                nleadsp = len(line) - len(line.lstrip())    # Get indentation
+            if len(line) < nleadsp:
+                err_str = f"Unexpected indent of {len(line)}"
+                err_str += f" for line:'{line}' minimum: {nleadsp}"
+                err_str += "\n   String:\n"
+                err_str += "\n" + self.list_string(string)
+                raise SelectError(err_str)
+            
+            shifted_line = line[nleadsp:]    
+            shifted_string += shifted_line + "\n"
+        return shifted_string
+
+    def list_string(self, string):
+        """ List string, given line numbers
+        :string: string to be listed with line numbers
+        :returns: string with line numbered lines
+        """
+        out_str = ""
+        lines = string.split("\n")
+        for i, line in enumerate(lines):
+            out_str += f"{i+1:>2d}: {line}\n"
+        return out_str
+        
     def run(self):
         """ run (execute command string)
         """
         self.result = False          # Set True if OK
         if self.string is None:
-            err_str = "FileStringExec Error:"
+            err_str = "\nFileStringExec Error:"
             if self.file_name is not None:
                 err_str += f" while executing file {self.file_name}\n"
             err_str += "string is missing"
@@ -108,7 +163,7 @@ class FileStringExec:
         except Exception as e:
             _, _, tb = sys.exc_info()
             tbs = traceback.extract_tb(tb)
-            err_str = "FileStringExec Error:"
+            err_str = "\nFileStringExec Error:"
             if self.file_name is not None:
                 err_str += SlTrace.lg(f"while executing text from {self.file_name}\n")
             err_str += str(e)
@@ -117,7 +172,7 @@ class FileStringExec:
                 tbfmt = 'File "%s", line %d, in %s' % (tbfr.filename, tbfr.lineno, tbfr.name)
                 SlTrace.lg("    %s\n       %s" % (tbfmt, tbfr.line))
             if self.list_exec_string:
-                SlTrace.lg(f"Exec string:\n{compile_str}")
+                SlTrace.lg(f"Exec string:\n{self.list_string(compile_str)}")
             self.result = False
         return self.result
 
